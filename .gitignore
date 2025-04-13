@@ -1,0 +1,41 @@
+# Gradle-specific files
+.gradle/
+build/
+
+# Gradle Wrapper files
+!gradle/wrapper/gradle-wrapper.jar
+gradle/wrapper/gradle-wrapper.properties
+
+# IntelliJ IDEA project files
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# VS Code settings
+.vscode/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*.DS_Store
+Thumbs.db
+
+# Kotlin-specific files
+*.kotlin_metadata
+
+# Java-specific files
+*.class
+
+# Dependency caches
+**/out/
+**/.idea_modules/
+**/.classpath
+**/.project
+**/.settings/
+
+# OS-specific files
+*.~lock.*
