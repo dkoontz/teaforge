@@ -39,3 +39,4 @@ Thumbs.db
 
 # OS-specific files
 *.~lock.*
+*.afdesign~lock~
