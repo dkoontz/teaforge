@@ -12,7 +12,7 @@ A Teaforge program consists of three components:
 2. **Update**: A function that takes in a messages and program state and returns a modified state along with any effects the program wishes to run
 3. **Subscriptions**: A mechanism provided by the platform that allows a program to receive external data on an ongoing basis. The program will return a list of zero or more subscriptions it wants to receive messages from. This will be evaluated as the program runs allowing subscriptions to be added or removed.
 
-### (TEA)time
+### (TEA)forge
 
 Teaforge is inspired by the Elm programming language and its use of an architecure known as "The Elm Architecture" (TEA). Teaforge differs from TEA in that is platform-agnostic and requires a platform-specific implementation that makes all the decisions about what capabilites are available to a program (Effects and Subscriptions), when and how a program should be updated (when Messages are processed, Effects are run, etc.).
 
@@ -225,3 +225,26 @@ enum class IoPortStatus {
 ```
 
 2. **Error Handling**: Implement robust error handling for hardware interactions. Any errors should be communicated back to a program via a message.
+
+
+## Using TeaForge as a Dependency
+
+### Maven
+
+To use TeaForge in your Maven project, add the following to your `pom.xml`:
+
+```xml
+<dependency>
+    <groupId>io.github.teaforge</groupId>
+    <artifactId>teaforge</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
+
+## Building
+
+Use `./mvnw clean package` to build the package.
+
+You can install it locally using `./mvnw install`.
+
+To publish, push your changes then trigger the "Publish to GitHub Packages" workflow under GitHub Actions.
