@@ -261,6 +261,6 @@ Use `./mvnw clean package` to build the package.
 
 You can install it locally using `./mvnw install`.
 
-To publish, push your changes then trigger the "Publish to GitHub Packages" workflow under GitHub Actions.
+To publish, push a tag starting with `v` such as `v1.0.3`, this will trigger a GitHub action that will publish the jar file as a release as well as adding the build to the GitHub Maven repository.
 
 *Note:* You will need to have the `GITHUB_TOKEN` environment variable set.

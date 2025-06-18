@@ -1,4 +1,6 @@
 name: Release
+permissions:
+  contents: write
 on:
   push:
     tags:
@@ -15,36 +17,32 @@ jobs:
         with:
           java-version: '11'
           distribution: 'temurin'
-          
-      - name: Build with Maven
-        run: mvn clean package
-        
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: target/*.jar
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Build with Gradle
+        run: ./gradlew build
+
+      - name: Create GitHub Release with Gradle
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew githubRelease
+
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
       - uses: actions/checkout@v4
-      - name: Set up JDK 11
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: '11'
           distribution: 'temurin'
-          server-id: github
-          settings-path: ${{ github.workspace }}
 
-      - name: Build with Maven
-        run: mvn -B package --file pom.xml
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
 
-      - name: Publish to GitHub Packages Apache Maven
-        run: mvn deploy -s $GITHUB_WORKSPACE/settings.xml
+      - name: Build and Publish with Gradle
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew publish

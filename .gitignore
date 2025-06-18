@@ -2,10 +2,6 @@
 .gradle/
 build/
 
-# Gradle Wrapper files
-!gradle/wrapper/gradle-wrapper.jar
-gradle/wrapper/gradle-wrapper.properties
-
 # Maven-specific files
 target/
 pom.xml.tag
@@ -16,10 +12,6 @@ release.properties
 dependency-reduced-pom.xml
 buildNumber.properties
 .mvn/timing.properties
-
-# Maven Wrapper
-!.mvn/wrapper/maven-wrapper.jar
-!.mvn/wrapper/maven-wrapper.properties
 
 # IntelliJ IDEA project files
 .idea/
