@@ -262,3 +262,5 @@ Use `./mvnw clean package` to build the package.
 You can install it locally using `./mvnw install`.
 
 To publish, push your changes then trigger the "Publish to GitHub Packages" workflow under GitHub Actions.
+
+*Note:* You will need to have the `GITHUB_TOKEN` environment variable set.
