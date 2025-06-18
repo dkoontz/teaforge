@@ -241,6 +241,20 @@ To use TeaForge in your Maven project, add the following to your `pom.xml`:
 </dependency>
 ```
 
+### Gradle
+
+To use TeaForge in your Gradle project, add the following to your `build.gradle` file
+
+```groovy
+implementation 'io.github.teaforge:teaforge:0.1.0'
+```
+
+or `build.gradle.kts` file
+
+```kotlin
+implementation("io.github.teaforge:teaforge:0.1.0")
+```
+
 ## Building
 
 Use `./mvnw clean package` to build the package.
