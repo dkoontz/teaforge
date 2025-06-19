@@ -5,7 +5,7 @@ plugins {
 }
 
 project.group = "io.github.dkoontz"
-project.version = "0.1.1"
+project.version = "0.1.2"
 
 repositories { mavenCentral() }
 
@@ -41,7 +41,7 @@ githubRelease {
     releaseName.set("Release v${project.version}")
     targetCommitish.set("main")
     body.set("Automated release for version ${project.version}")
-    releaseAssets.setFrom(file("target/${project.name}-${project.version}.jar"))
+    releaseAssets.setFrom(file("build/libs/${project.name}-${project.version}.jar"))
     draft.set(false)
     prerelease.set(false)
 }
@@ -99,7 +99,7 @@ tasks.named("build") {
 }
 
 tasks.named("githubRelease") {
-    dependsOn("compileKotlin")
+    dependsOn("jar")
 }
 tasks.named("publish") {
     dependsOn("compileKotlin")
