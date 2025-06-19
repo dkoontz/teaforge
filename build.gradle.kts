@@ -5,8 +5,7 @@ plugins {
 }
 
 project.group = "io.github.dkoontz"
-
-project.version = "0.1.0"
+project.version = "0.1.1"
 
 repositories { mavenCentral() }
 
@@ -37,12 +36,12 @@ publishing {
 githubRelease {
     token(System.getenv("GITHUB_TOKEN") ?: "")
     owner.set("dkoontz")
-    repo.set("teaforge")
+    repo.set(project.name)
     tagName.set("v${project.version}")
     releaseName.set("Release v${project.version}")
     targetCommitish.set("main")
     body.set("Automated release for version ${project.version}")
-    releaseAssets.setFrom(file("target/teaforge-${project.version}.jar"))
+    releaseAssets.setFrom(file("target/${project.name}-${project.version}.jar"))
     draft.set(false)
     prerelease.set(false)
 }
@@ -87,7 +86,7 @@ tasks.register<Copy>("installGitHooks") {
     rename { "pre-push" }
 
     doLast {
-        if (!System.getProperty("os.name").toLowerCase().contains("win")) {
+        if (!System.getProperty("os.name").lowercase().contains("win")) {
             val hookDestinationFile = file(".git/hooks/pre-push")
             hookDestinationFile.setExecutable(true)
         }
