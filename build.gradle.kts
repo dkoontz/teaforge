@@ -5,7 +5,7 @@ plugins {
 }
 
 project.group = "io.github.dkoontz"
-project.version = "0.1.2"
+project.version = "0.1.3"
 
 repositories { mavenCentral() }
 
@@ -37,8 +37,8 @@ githubRelease {
     token(System.getenv("GITHUB_TOKEN") ?: "")
     owner.set("dkoontz")
     repo.set(project.name)
-    tagName.set("v${project.version}")
-    releaseName.set("Release v${project.version}")
+    tagName.set("${project.version}")
+    releaseName.set("Release ${project.version}")
     targetCommitish.set("main")
     body.set("Automated release for version ${project.version}")
     releaseAssets.setFrom(file("build/libs/${project.name}-${project.version}.jar"))
