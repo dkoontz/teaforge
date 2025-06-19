@@ -5,6 +5,7 @@ plugins {
 }
 
 project.group = "io.github.dkoontz"
+
 project.version = "0.1.3"
 
 repositories { mavenCentral() }
@@ -27,9 +28,24 @@ tasks.test { useJUnitPlatform() }
 
 publishing {
     publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
+        create<MavenPublication>("maven") { 
+            from(components["java"]) 
+            
+            // Ensure dependencies are included in the published POM
+            pom {
+                withXml {
+                    val dependenciesNode = asNode().appendNode("dependencies")
+                    configurations.api.get().dependencies.forEach { dep ->
+                        val dependencyNode = dependenciesNode.appendNode("dependency")
+                        dependencyNode.appendNode("groupId", dep.group)
+                        dependencyNode.appendNode("artifactId", dep.name)
+                        dependencyNode.appendNode("version", dep.version)
+                        dependencyNode.appendNode("scope", "compile")
+                    }
+                }
+            }
         }
+
     }
 }
 
@@ -52,20 +68,23 @@ tasks.register("checkTagMatchesVersion") {
     doLast {
         val localRef = project.findProperty("local_ref") as String?
         if (localRef == null) {
-            throw GradleException("❌ local_ref tag was not provided. Please provide it using -Plocal_ref=refs/tags/v0.1.0")
+            throw GradleException(
+                    "❌ local_ref tag was not provided. Please provide it using -Plocal_ref=refs/tags/v0.1.0"
+            )
         }
         if (localRef.startsWith("refs/tags/")) {
             val tag = localRef.removePrefix("refs/tags/")
             if (tag.startsWith("v")) {
                 val expectedTag = "v${project.version}"
                 if (tag != expectedTag) {
-                    throw GradleException("❌ Tag being pushed '$tag' does not match project.version '$expectedTag'")
+                    throw GradleException(
+                            "❌ Tag being pushed '$tag' does not match project.version '$expectedTag'"
+                    )
                 } else {
                     println("✔︎ Tag matches project.version: $tag == $expectedTag")
                 }
             }
         }
-        
     }
 }
 
@@ -73,16 +92,16 @@ tasks.register<Copy>("installGitHooks") {
     group = "build setup"
     description = "Copies pre-push hook script to .git/hooks/pre-push (Windows and Unix)"
     val gitHooksDir = file(".git/hooks")
-    
+
     val hookSourceFile = file("scripts/git-hooks/pre-push/pre-push.sh")
-    
+
     if (!gitHooksDir.exists()) {
         gitHooksDir.mkdirs()
     }
 
     from(hookSourceFile)
     into(gitHooksDir)
-    
+
     rename { "pre-push" }
 
     doLast {
@@ -94,13 +113,8 @@ tasks.register<Copy>("installGitHooks") {
     }
 }
 
-tasks.named("build") {
-    dependsOn("installGitHooks")
-}
+tasks.named("build") { dependsOn("installGitHooks") }
 
-tasks.named("githubRelease") {
-    dependsOn("jar")
-}
-tasks.named("publish") {
-    dependsOn("compileKotlin")
-}
+tasks.named("githubRelease") { dependsOn("jar") }
+
+tasks.named("publish") { dependsOn("compileKotlin") }
