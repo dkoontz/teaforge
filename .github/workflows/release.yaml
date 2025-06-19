@@ -2,21 +2,47 @@ name: Release
 permissions:
   contents: write
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 jobs:
-  release:
+  version-check:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      
+        with:
+          fetch-depth: 0 # Fetch all history for all tags
+
+      - name: Extract version from build.gradle.kts
+        id: get-version
+        run: |
+          VERSION=$(grep 'project.version = ' build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Check if tag already exists
+        run: |
+          VERSION=${{ steps.get-version.outputs.version }}
+          if git tag -l | grep -q "^v$VERSION$"; then
+            echo "Error: Tag v$VERSION already exists!"
+            echo "Please update the version in build.gradle.kts before creating a new release."
+            exit 1
+          else
+            echo "Tag v$VERSION does not exist, proceeding with release..."
+          fi
+
+  release:
+    runs-on: ubuntu-latest
+    needs: version-check
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '11'
-          distribution: 'temurin'
+          java-version: "11"
+          distribution: "temurin"
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
@@ -29,20 +55,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew githubRelease
 
-  publish:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: '11'
-          distribution: 'temurin'
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x ./gradlew
-
-      - name: Build and Publish with Gradle
+      - name: Publish to GitHub Maven registry with Gradle
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew publish
