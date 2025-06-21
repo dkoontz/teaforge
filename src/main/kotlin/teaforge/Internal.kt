@@ -4,243 +4,233 @@ import teaforge.HistoryEntry
 import teaforge.HistoryEventSource
 import teaforge.ProgramConfig
 import teaforge.ProgramRunnerInstance
+import teaforge.TaggedEffect
+import teaforge.TaggedSubscription
 import teaforge.utils.Maybe
 
 fun <
-        TEffect,
+    TMessage,
+    TProgramModel,
+    TRunnerModel,
+> processMessages(
+    program: ProgramConfig<TMessage, TProgramModel>,
+    programRunner: ProgramRunnerInstance<
         TMessage,
         TProgramModel,
         TRunnerModel,
-        TSubscription,
-        TSubscriptionState> processMessages(
-        program: ProgramConfig<TEffect, TMessage, TProgramModel, TSubscription>,
-        programRunner:
-                ProgramRunnerInstance<
-                        TEffect,
-                        TMessage,
-                        TProgramModel,
-                        TRunnerModel,
-                        TSubscription,
-                        TSubscriptionState>
+    >,
 ): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
-        val initial: Triple<TRunnerModel, TProgramModel, List<TEffect>> =
-                Triple(programRunner.runnerModel, programRunner.programModel, emptyList())
+    TMessage,
+    TProgramModel,
+    TRunnerModel,
+> {
+    val initial: Triple<TRunnerModel, TProgramModel, List<TaggedEffect>> =
+        Triple(programRunner.runnerModel, programRunner.programModel, emptyList())
 
-        val (
-                finalRunnerModel,
-                finalProgramModel,
-                effects,
-        ) = programRunner.pendingMessages.fold(
-                initial = initial,
-                operation = { acc, message ->
-                        val (runnerModel, programModel, currentEffects) = acc
-                        val (updatedProgramModel, newEffects) =
-                                program.update(message, programModel)
-                        val historyEntry =
-                                HistoryEntry(
-                                        source = HistoryEventSource.ProgramMessage(message),
-                                        programModelAfterEvent = updatedProgramModel
-                                )
-                        val updatedRunnerModel =
-                                programRunner.runnerConfig.processHistoryEntry(
-                                        runnerModel,
-                                        historyEntry
-                                )
+    val (
+        finalRunnerModel,
+        finalProgramModel,
+        effects,
+    ) =
+        programRunner.pendingMessages.fold(
+            initial = initial,
+            operation = { acc, message ->
+                val (runnerModel, programModel, currentEffects) = acc
+                val (updatedProgramModel, newEffects) =
+                    program.update(message, programModel)
+                val historyEntry =
+                    HistoryEntry(
+                        source = HistoryEventSource.ProgramMessage(message),
+                        programModelAfterEvent = updatedProgramModel,
+                    )
+                val updatedRunnerModel =
+                    programRunner.platformConfig.processHistoryEntry(
+                        runnerModel,
+                        historyEntry,
+                    )
 
-                        Triple(updatedRunnerModel, updatedProgramModel, currentEffects + newEffects)
-                }
+                Triple(updatedRunnerModel, updatedProgramModel, currentEffects + newEffects)
+            },
         )
 
+    return programRunner.copy(
+        runnerModel = finalRunnerModel,
+        programModel = finalProgramModel,
+        pendingMessages = emptyList(),
+        pendingEffects = programRunner.pendingEffects + effects,
+    )
+}
+
+fun <
+    TMessage,
+    TProgramModel,
+    TRunnerModel,
+> activateOrDeactivateSubscriptions(
+    programRunner: ProgramRunnerInstance<
+        TMessage,
+        TProgramModel,
+        TRunnerModel,
+    >,
+): ProgramRunnerInstance<
+    TMessage,
+    TProgramModel,
+    TRunnerModel,
+> {
+    val previousSubscriptions = programRunner.subscriptions
+    val previousSubscriptionKeys = previousSubscriptions.keys
+
+    val currentSubscriptions =
+        programRunner.programConfig.subscriptions(programRunner.programModel)
+
+    if (currentSubscriptions != previousSubscriptionKeys) {
+        val newSubscriptions = currentSubscriptions - previousSubscriptionKeys
+
+        val removedSubscriptions =
+            previousSubscriptions.filterKeys { it !in currentSubscriptions }
+
+        val remainingSubscriptions =
+            previousSubscriptions.filterKeys { it in currentSubscriptions }
+
+        val runnerModelAfterProcessingSubscriptionRemovals =
+            removedSubscriptions.entries.fold(
+                initial = programRunner.runnerModel,
+                operation = { runnerModel, entry ->
+                    val (subscription, subscriptionState) = entry.toPair()
+                    programRunner.capabilities
+                        .firstOrNull { it.canHandleSubscription(subscription) }
+                        ?.stopSubscription(subscriptionState)
+                    runnerModel
+                },
+            )
+
+        val (runnerModelAfterProcessingSubscriptionAdditions, updatedSubscriptions) =
+            newSubscriptions.fold(
+                initial = runnerModelAfterProcessingSubscriptionRemovals to remainingSubscriptions,
+                operation = { (runnerModel, subscriptions), newSubscription ->
+                    val matchingCapability = programRunner.capabilities
+                        .firstOrNull { it.canHandleSubscription(newSubscription) }
+                    
+                    if (matchingCapability != null) {
+                        val initialSubscriptionState = matchingCapability.startSubscription(newSubscription)
+                        runnerModel to (subscriptions + (newSubscription to initialSubscriptionState))
+                    } else {
+                        runnerModel to subscriptions
+                    }
+                },
+            )
         return programRunner.copy(
-                runnerModel = finalRunnerModel,
-                programModel = finalProgramModel,
-                pendingMessages = emptyList(),
-                pendingEffects = programRunner.pendingEffects + effects,
+            runnerModel = runnerModelAfterProcessingSubscriptionAdditions,
+            subscriptions = updatedSubscriptions,
         )
+    }
+    return programRunner
 }
 
 fun <
-        TEffect,
+    TMessage,
+    TProgramModel,
+    TRunnerModel,
+> updateSubscriptions(
+    programRunner: ProgramRunnerInstance<
         TMessage,
         TProgramModel,
         TRunnerModel,
-        TSubscription,
-        TSubscriptionState> activateOrDeactivateSubscriptions(
-        programRunner:
-                ProgramRunnerInstance<
-                        TEffect,
-                        TMessage,
-                        TProgramModel,
-                        TRunnerModel,
-                        TSubscription,
-                        TSubscriptionState>
+    >,
 ): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
-        val previousSubscriptions = programRunner.subscriptions
-        val previousSubscriptionKeys = previousSubscriptions.keys
+    TMessage,
+    TProgramModel,
+    TRunnerModel,
+> {
+    val (finalModel, finalSubscriptions, messages) =
+        programRunner
+            .subscriptions
+            .toList()
+            .fold(
+                initial = Triple(
+                    programRunner.runnerModel,
+                    programRunner.subscriptions,
+                    emptyList<TMessage>()
+                ),
+                operation = { acc, (subscription, subscriptionState) ->
+                    val (model, subscriptions, messages) = acc
 
-        val currentSubscriptions =
-                programRunner.programConfig.subscriptions(programRunner.programModel)
+                    val matchingCapability = programRunner.capabilities
+                        .firstOrNull { it.canHandleSubscription(subscription) }
+                    
+                    val (updatedSubscriptionState, newMessage) = 
+                        matchingCapability?.processSubscription(subscriptionState) 
+                            ?: Pair(subscriptionState, Maybe.None)
+                    
+                    val updatedModel = model
+                    val updatedSubscriptions = subscriptions + (subscription to updatedSubscriptionState)
 
-        if (currentSubscriptions != previousSubscriptionKeys) {
-                val newSubscriptions = currentSubscriptions - previousSubscriptionKeys
-
-                val removedSubscriptions =
-                        previousSubscriptions.filterKeys { it !in currentSubscriptions }
-
-                val remainingSubscriptions =
-                        previousSubscriptions.filterKeys { it in currentSubscriptions }
-
-                val runnerModelAfterProcessingSubscriptionRemovals =
-                        removedSubscriptions.values.fold(
-                                initial = programRunner.runnerModel,
-                                operation = { runnerModel, subscriptionState ->
-                                        programRunner.runnerConfig.stopSubscription(
-                                                runnerModel,
-                                                subscriptionState,
-                                        )
-                                }
-                        )
-
-                val (runnerModelAfterProcessingSubscriptionAdditions, updatedSubscriptions) =
-                        newSubscriptions.fold(
-                                initial =
-                                        Pair(
-                                                runnerModelAfterProcessingSubscriptionRemovals,
-                                                remainingSubscriptions
-                                        ),
-                                operation = { (runnerModel, subscriptions), newSubscription ->
-                                        val (updatedRunner, initialSubscriptionState) =
-                                                programRunner.runnerConfig.startSubscription(
-                                                        runnerModel,
-                                                        newSubscription
-                                                )
-                                        Pair(
-                                                updatedRunner,
-                                                subscriptions +
-                                                        (newSubscription to
-                                                                initialSubscriptionState)
-                                        )
-                                }
-                        )
-                return programRunner.copy(
-                        runnerModel = runnerModelAfterProcessingSubscriptionAdditions,
-                        subscriptions = updatedSubscriptions,
-                )
-        }
-        return programRunner
-}
-
-fun <
-        TEffect,
-        TMessage,
-        TProgramModel,
-        TRunnerModel,
-        TSubscription,
-        TSubscriptionState> updateSubscriptions(
-        programRunner:
-                ProgramRunnerInstance<
-                        TEffect,
-                        TMessage,
-                        TProgramModel,
-                        TRunnerModel,
-                        TSubscription,
-                        TSubscriptionState>
-): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
-        val (finalModel, finalSubscriptions, messages) =
-                programRunner
-                        .subscriptions
-                        .toList()
-                        .fold(
-                                initial =
-                                        Triple<
-                                                TRunnerModel,
-                                                Map<TSubscription, TSubscriptionState>,
-                                                List<TMessage>>(
-                                                programRunner.runnerModel,
-                                                programRunner.subscriptions,
-                                                emptyList()
-                                        ),
-                                operation = { acc, (subscription, subscriptionState) ->
-                                        val (model, subscriptions, messages) = acc
-
-                                        val (updatedModel, updatedSubscriptionState, newMessage) =
-                                                programRunner.runnerConfig.processSubscription(
-                                                        model,
-                                                        subscriptionState,
-                                                )
-
-                                        val updatedSubscriptions =
-                                                subscriptions +
-                                                        (subscription to updatedSubscriptionState)
-
-                                        when (newMessage) {
-                                                is Maybe.None ->
-                                                        Triple(
-                                                                updatedModel,
-                                                                updatedSubscriptions,
-                                                                messages
-                                                        )
-                                                is Maybe.Some ->
-                                                        Triple(
-                                                                updatedModel,
-                                                                updatedSubscriptions,
-                                                                messages + newMessage.value
-                                                        )
-                                        }
-                                }
-                        )
-
-        return programRunner.copy(
-                runnerModel = finalModel,
-                subscriptions = finalSubscriptions,
-                pendingMessages = programRunner.pendingMessages + messages,
-        )
-}
-
-fun <
-        TEffect,
-        TMessage,
-        TProgramModel,
-        TRunnerModel,
-        TSubscription,
-        TSubscriptionState> processPendingEffects(
-        programRunner:
-                ProgramRunnerInstance<
-                        TEffect,
-                        TMessage,
-                        TProgramModel,
-                        TRunnerModel,
-                        TSubscription,
-                        TSubscriptionState>
-): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
-        val (finalModel, messages) =
-                programRunner.pendingEffects.fold(
-                        initial =
-                                Pair<TRunnerModel, List<TMessage>>(
-                                        programRunner.runnerModel,
-                                        emptyList()
-                                ),
-                        operation = { acc, effect ->
-                                val (model, messages) = acc
-
-                                val (updatedModel, message) =
-                                        programRunner.runnerConfig.processEffect(model, effect)
-
-                                when (message) {
-                                        is Maybe.None -> Pair(updatedModel, messages)
-                                        is Maybe.Some ->
-                                                Pair(updatedModel, messages + message.value)
-                                }
+                    when (newMessage) {
+                        is Maybe.None ->
+                            Triple(
+                                updatedModel,
+                                updatedSubscriptions,
+                                messages,
+                            )
+                        is Maybe.Some -> {
+                            @Suppress("UNCHECKED_CAST")
+                            val typedMessage = newMessage.value as TMessage
+                            Triple(
+                                updatedModel,
+                                updatedSubscriptions,
+                                messages + typedMessage,
+                            )
                         }
-                )
+                    }
+                },
+            )
 
-        return programRunner.copy(
-                runnerModel = finalModel,
-                pendingEffects = emptyList(),
-                pendingMessages = programRunner.pendingMessages + messages,
+    return programRunner.copy(
+        runnerModel = finalModel,
+        subscriptions = finalSubscriptions,
+        pendingMessages = programRunner.pendingMessages + messages,
+    )
+}
+
+fun <
+    TMessage,
+    TProgramModel,
+    TRunnerModel,
+> processPendingEffects(
+    programRunner: ProgramRunnerInstance<
+        TMessage,
+        TProgramModel,
+        TRunnerModel,
+    >,
+): ProgramRunnerInstance<
+    TMessage,
+    TProgramModel,
+    TRunnerModel,
+> {
+    val (finalModel, messages) =
+        programRunner.pendingEffects.fold(
+            initial = programRunner.runnerModel to emptyList<TMessage>(),
+            operation = { acc, effect ->
+                val (model, messages) = acc
+
+                val matchingCapability = programRunner.capabilities
+                    .firstOrNull { it.canHandleEffect(effect) }
+                
+                val message = matchingCapability?.processEffect(effect) ?: Maybe.None
+
+                when (message) {
+                    is Maybe.None -> Pair(model, messages)
+                    is Maybe.Some -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val typedMessage = message.value as TMessage
+                        Pair(model, messages + typedMessage)
+                    }
+                }
+            },
         )
+
+    return programRunner.copy(
+        runnerModel = finalModel,
+        pendingEffects = emptyList(),
+        pendingMessages = programRunner.pendingMessages + messages,
+    )
 }
