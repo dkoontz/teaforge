@@ -1,87 +1,86 @@
 package teaforge.platform
 
-import teaforge.*
-import teaforge.internal.*
+import teaforge.PlatformConfig
+import teaforge.ProgramConfig
+import teaforge.ProgramRunnerInstance
+import teaforge.RegisteredCapability
+import teaforge.internal.activateOrDeactivateSubscriptions
+import teaforge.internal.processMessages
+import teaforge.internal.processPendingEffects
+import teaforge.internal.updateSubscriptions
 
-fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> initRunner(
-        runnerConfig:
-                ProgramRunnerConfig<
-                        TEffect,
-                        TMessage,
-                        TProgramModel,
-                        TRunnerModel,
-                        TSubscription,
-                        TSubscriptionState>,
-        runnerArgs: List<String>,
-        program: ProgramConfig<TEffect, TMessage, TProgramModel, TSubscription>,
-        programArgs: List<String>
+fun <TMessage, TProgramModel, TRunnerModel> initRunner(
+    platformConfig: PlatformConfig<TRunnerModel, TProgramModel, TMessage>,
+    capabilities: List<RegisteredCapability>,
+    runnerArgs: List<String>,
+    program: ProgramConfig<TMessage, TProgramModel>,
+    programArgs: List<String>,
 ): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
+    TMessage,
+    TProgramModel,
+    TRunnerModel,
+> {
+    val (initialProgramModel, initialEffects) = program.init(programArgs)
 
-        val (initialProgramModel, initialEffects) = program.init(programArgs)
+    val runner =
+        ProgramRunnerInstance(
+            platformConfig = platformConfig,
+            capabilities = capabilities,
+            programConfig = program,
+            programModel = initialProgramModel,
+            pendingMessages = emptyList(),
+            pendingEffects = initialEffects,
+            subscriptions = emptyMap(),
+            runnerModel = platformConfig.initRunner(runnerArgs),
+        )
 
-        val runner =
-                ProgramRunnerInstance(
-                        runnerConfig = runnerConfig,
-                        programConfig = program,
-                        programModel = initialProgramModel,
-                        pendingMessages = emptyList(),
-                        pendingEffects = initialEffects,
-                        subscriptions = emptyMap(),
-                        runnerModel = runnerConfig.initRunner(runnerArgs),
-                )
-
-        return updateSubscriptions(runner)
+    return updateSubscriptions(runner)
 }
 
-fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> stepProgram(
-        programRunner:
-                ProgramRunnerInstance<
-                        TEffect,
-                        TMessage,
-                        TProgramModel,
-                        TRunnerModel,
-                        TSubscription,
-                        TSubscriptionState>
+fun <TMessage, TProgramModel, TRunnerModel> stepProgram(
+    programRunner: ProgramRunnerInstance<
+        TMessage,
+        TProgramModel,
+        TRunnerModel,
+    >,
 ): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
-        val runnerAfterStart =
-                programRunner.copy(
-                        runnerModel =
-                                programRunner.runnerConfig.startOfUpdateCycle(
-                                        programRunner.runnerModel
-                                )
-                )
+    TMessage,
+    TProgramModel,
+    TRunnerModel,
+> {
+    val runnerAfterStart =
+        programRunner.copy(
+            runnerModel =
+                programRunner.platformConfig.startOfUpdateCycle(
+                    programRunner.runnerModel,
+                ),
+        )
 
-        val runnerAfterProcessingSubscriptionAdditionsAndRemovals =
-                activateOrDeactivateSubscriptions(runnerAfterStart)
+    val runnerAfterProcessingSubscriptionAdditionsAndRemovals =
+        activateOrDeactivateSubscriptions(runnerAfterStart)
 
-        val runnerAfterUpdatingSubscriptions:
-                ProgramRunnerInstance<
-                        TEffect,
-                        TMessage,
-                        TProgramModel,
-                        TRunnerModel,
-                        TSubscription,
-                        TSubscriptionState> =
-                updateSubscriptions(runnerAfterProcessingSubscriptionAdditionsAndRemovals)
+    val runnerAfterUpdatingSubscriptions:
+        ProgramRunnerInstance<
+            TMessage,
+            TProgramModel,
+            TRunnerModel,
+        > =
+        updateSubscriptions(runnerAfterProcessingSubscriptionAdditionsAndRemovals)
 
-        val runnerAfterProcessingMessages:
-                ProgramRunnerInstance<
-                        TEffect,
-                        TMessage,
-                        TProgramModel,
-                        TRunnerModel,
-                        TSubscription,
-                        TSubscriptionState> =
-                processMessages(programRunner.programConfig, runnerAfterUpdatingSubscriptions)
+    val runnerAfterProcessingMessages:
+        ProgramRunnerInstance<
+            TMessage,
+            TProgramModel,
+            TRunnerModel,
+        > =
+        processMessages(programRunner.programConfig, runnerAfterUpdatingSubscriptions)
 
-        val runnerAfterProcessingEffects = processPendingEffects(runnerAfterProcessingMessages)
+    val runnerAfterProcessingEffects = processPendingEffects(runnerAfterProcessingMessages)
 
-        val finalRunnerModel =
-                programRunner.runnerConfig.endOfUpdateCycle(
-                        runnerAfterProcessingEffects.runnerModel
-                )
+    val finalRunnerModel =
+        programRunner.platformConfig.endOfUpdateCycle(
+            runnerAfterProcessingEffects.runnerModel,
+        )
 
-        return runnerAfterProcessingEffects.copy(runnerModel = finalRunnerModel)
+    return runnerAfterProcessingEffects.copy(runnerModel = finalRunnerModel)
 }
