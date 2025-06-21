@@ -43,7 +43,7 @@ data class ProgramRunnerInstance<
 )
 
 sealed interface HistoryEventSource<TMessage> {
-        object Start : HistoryEventSource<Nothing>
+        object ProgramInit : HistoryEventSource<Nothing>
         data class ProgramMessage<TMessage>(val message: TMessage) : HistoryEventSource<TMessage>
 }
 

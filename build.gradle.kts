@@ -15,11 +15,11 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
-kotlin { jvmToolchain(11) }
+kotlin { jvmToolchain(17) }
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(11)
+        languageVersion = JavaLanguageVersion.of(17)
         vendor = JvmVendorSpec.ADOPTIUM
     }
 }

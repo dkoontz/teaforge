@@ -255,12 +255,10 @@ or `build.gradle.kts` file
 implementation("io.github.teaforge:teaforge:0.1.0")
 ```
 
-## Building
+## Building a Maven package
 
 Use `./mvnw clean package` to build the package.
 
 You can install it locally using `./mvnw install`.
 
-To publish, push a tag starting with `v` such as `v1.0.3`, this will trigger a GitHub action that will publish the jar file as a release as well as adding the build to the GitHub Maven repository.
-
-*Note:* You will need to have the `GITHUB_TOKEN` environment variable set.
+To publish the package there is a GitHub workflow (defined in .github/workflows) that will both make a release containing the jar file and also publish to the GitHub Maven repository.
