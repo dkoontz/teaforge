@@ -16,34 +16,34 @@ import teaforge.utils.unwrap
 
 fun <
         TEffect,
+        TInstantEffect: TEffect,
+        TLateEffect: TEffect,
         TMessage,
         TProgramModel,
         TRunnerModel,
         TSubscription,
         TSubscriptionState> processMessages(
-        program: ProgramConfig<TEffect, TMessage, TProgramModel, TSubscription>,
+        program: ProgramConfig<TEffect, TInstantEffect, TLateEffect, TMessage, TProgramModel, TSubscription>,
         programRunner:
                 ProgramRunnerInstance<
                         TEffect,
+                        TInstantEffect,
+                        TLateEffect,
                         TMessage,
                         TProgramModel,
                         TRunnerModel,
                         TSubscription,
                         TSubscriptionState>
 ): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
-        val initial: Triple<TRunnerModel, TProgramModel, List<TEffect>> =
-                Triple(programRunner.runnerModel, programRunner.programModel, emptyList())
+        TEffect, TInstantEffect, TLateEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
+        val initial: Triple<TRunnerModel, TProgramModel, Pair<List<TInstantEffect>, List<TLateEffect>>> =
+                Triple(programRunner.runnerModel, programRunner.programModel, Pair(emptyList(), emptyList()))
 
-        val (
-                finalRunnerModel,
-                finalProgramModel,
-                effects,
-        ) = programRunner.pendingMessages.fold(
+        val (finalRunnerModel, finalProgramModel, effects) = programRunner.pendingMessages.fold(
                 initial = initial,
                 operation = { acc, message ->
                         val (runnerModel, programModel, currentEffects) = acc
-                        val (updatedProgramModel, newEffects) =
+                        val (updatedProgramModel, newInstantEffects, newLateEffects) =
                                 program.update(message, programModel)
                         val historyEntry =
                                 HistoryEntry(
@@ -55,8 +55,9 @@ fun <
                                         runnerModel,
                                         historyEntry
                                 )
-
-                        Triple(updatedRunnerModel, updatedProgramModel, currentEffects + newEffects)
+                        val finalInstantEffects = currentEffects.first + newInstantEffects
+                        val finalLateEffects = currentEffects.second + newLateEffects
+                        Triple(updatedRunnerModel, updatedProgramModel, Pair(finalInstantEffects, finalLateEffects))
                 }
         )
 
@@ -64,12 +65,15 @@ fun <
                 runnerModel = finalRunnerModel,
                 programModel = finalProgramModel,
                 pendingMessages = emptyList(),
-                pendingEffects = programRunner.pendingEffects + effects,
+                pendingInstantEffects = programRunner.pendingInstantEffects + effects.first,
+                pendingLateEffects = programRunner.pendingLateEffects + effects.second,
         )
 }
 
 fun <
         TEffect,
+        TInstantEffect: TEffect,
+        TLateEffect: TEffect,
         TMessage,
         TProgramModel,
         TRunnerModel,
@@ -78,13 +82,15 @@ fun <
         programRunner:
                 ProgramRunnerInstance<
                         TEffect,
+                        TInstantEffect,
+                        TLateEffect,
                         TMessage,
                         TProgramModel,
                         TRunnerModel,
                         TSubscription,
                         TSubscriptionState>
 ): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
+        TEffect, TInstantEffect, TLateEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
         val previousSubscriptions = programRunner.subscriptions
         val previousSubscriptionKeys = previousSubscriptions.keys
 
@@ -142,6 +148,8 @@ fun <
 
 fun <
         TEffect,
+        TInstantEffect: TEffect,
+        TLateEffect: TEffect,
         TMessage,
         TProgramModel,
         TRunnerModel,
@@ -150,13 +158,15 @@ fun <
         programRunner:
                 ProgramRunnerInstance<
                         TEffect,
+                        TInstantEffect,
+                        TLateEffect,
                         TMessage,
                         TProgramModel,
                         TRunnerModel,
                         TSubscription,
                         TSubscriptionState>
 ): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
+        TEffect, TInstantEffect, TLateEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
         val (finalModel, finalSubscriptions, messages) =
                 programRunner
                         .subscriptions
@@ -210,24 +220,77 @@ fun <
 
 fun <
         TEffect,
+        TInstantEffect: TEffect,
+        TLateEffect: TEffect,
         TMessage,
         TProgramModel,
         TRunnerModel,
         TSubscription,
-        TSubscriptionState> processPendingEffects(
+        TSubscriptionState> processPendingInstantEffects(
+        programRunner:
+        ProgramRunnerInstance<
+                TEffect,
+                TInstantEffect,
+                TLateEffect,
+                TMessage,
+                TProgramModel,
+                TRunnerModel,
+                TSubscription,
+                TSubscriptionState>
+): ProgramRunnerInstance<
+        TEffect, TInstantEffect, TLateEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
+        val (finalModel, messages) =
+                programRunner.pendingInstantEffects.fold(
+                        initial =
+                                Pair<TRunnerModel, List<TMessage>>(
+                                        programRunner.runnerModel,
+                                        emptyList()
+                                ),
+                        operation = { acc, effect ->
+                                val (model, messages) = acc
+
+                                val (updatedModel, message) =
+                                        programRunner.runnerConfig.processInstantEffect(model, effect)
+
+                                when (message) {
+                                        is Maybe.None -> Pair(updatedModel, messages)
+                                        is Maybe.Some ->
+                                                Pair(updatedModel, messages + message.value)
+                                }
+                        }
+                )
+
+        return programRunner.copy(
+                runnerModel = finalModel,
+                pendingInstantEffects = emptyList(),
+                pendingMessages = programRunner.pendingMessages + messages,
+        )
+}
+
+fun <
+        TEffect,
+        TInstantEffect: TEffect,
+        TLateEffect: TEffect,
+        TMessage,
+        TProgramModel,
+        TRunnerModel,
+        TSubscription,
+        TSubscriptionState> processPendingLateEffects(
         scope: CoroutineScope,
         programRunner:
                 ProgramRunnerInstance<
                         TEffect,
+                        TInstantEffect,
+                        TLateEffect,
                         TMessage,
                         TProgramModel,
                         TRunnerModel,
                         TSubscription,
                         TSubscriptionState>
 ): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
+        TEffect, TInstantEffect, TLateEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
         val (finalModel, lateEffects) =
-                programRunner.pendingEffects.fold(
+                programRunner.pendingLateEffects.fold(
                         initial =
                                 Pair<TRunnerModel, List<Deferred<(TRunnerModel) -> Pair<TRunnerModel, Maybe<TMessage>>>>>(
                                         programRunner.runnerModel,
@@ -237,7 +300,7 @@ fun <
                                 val (model, lateEffects) = acc
 
                                 val job = scope.async(Dispatchers.Default) {
-                                        programRunner.runnerConfig.processEffect(model, effect)
+                                        programRunner.runnerConfig.processLateEffect(model, effect)
                                 }
                                 model to lateEffects + job
                         }
@@ -245,34 +308,38 @@ fun <
 
         return programRunner.copy(
                 runnerModel = finalModel,
-                pendingEffects = emptyList(),
-                pendingLateEffects = programRunner.pendingLateEffects + lateEffects,
+                pendingLateEffects = emptyList(),
+                runningLateEffects = programRunner.runningLateEffects + lateEffects,
         )
 }
 
 
 fun <
         TEffect,
+        TInstantEffect: TEffect,
+        TLateEffect: TEffect,
         TMessage,
         TProgramModel,
         TRunnerModel,
         TSubscription,
-        TSubscriptionState> processPendingLateEffects(
+        TSubscriptionState> updateRunningLateEffects(
         programRunner: ProgramRunnerInstance<
                 TEffect,
+                TInstantEffect,
+                TLateEffect,
                 TMessage,
                 TProgramModel,
                 TRunnerModel,
                 TSubscription,
                 TSubscriptionState>
 ): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
+        TEffect, TInstantEffect, TLateEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
 
-        val (finalModel, finalMessages, finalLateEffects) = programRunner.pendingLateEffects.fold(
+        val (finalModel, finalMessages, finalLateEffects) = programRunner.runningLateEffects.fold(
                 initial = Triple(
                         programRunner.runnerModel,
                         programRunner.pendingMessages,
-                        programRunner.pendingLateEffects
+                        programRunner.runningLateEffects
                 ),
                 operation = { (model, messages, lateEffectJobs), lateEffectJob ->
 
@@ -294,7 +361,7 @@ fun <
         return programRunner.copy(
                 runnerModel = finalModel,
                 pendingMessages = finalMessages,
-                pendingLateEffects = finalLateEffects
+                runningLateEffects = finalLateEffects
         )
 }
 

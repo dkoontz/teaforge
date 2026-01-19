@@ -3,16 +3,23 @@ package teaforge
 import kotlinx.coroutines.Deferred
 import teaforge.utils.Maybe
 
-data class ProgramConfig<TEffect, TMessage, TModel, TSubscription>(
-        val init: (List<String>) -> Pair<TModel, List<TEffect>>,
-        val update: (TMessage, TModel) -> Pair<TModel, List<TEffect>>,
+data class ProgramConfig<TEffect, TInstantEffect: TEffect, TLateEffect: TEffect, TMessage, TModel, TSubscription>(
+        val init: (List<String>) -> Triple<TModel, List<TInstantEffect>, List<TLateEffect>>,
+        val update: (TMessage, TModel) -> Triple<TModel, List<TInstantEffect>, List<TLateEffect>>,
         val subscriptions: (TModel) -> List<TSubscription>,
 )
 
 data class ProgramRunnerConfig<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState>(
+        TEffect,
+        TInstantEffect: TEffect,
+        TLateEffect: TEffect,
+        TMessage, TProgramModel,
+        TRunnerModel,
+        TSubscription,
+        TSubscriptionState>(
         val initRunner: (List<String>) -> TRunnerModel,
-        val processEffect: suspend (TRunnerModel, TEffect) -> (TRunnerModel) -> Pair<TRunnerModel, Maybe<TMessage>>,
+        val processInstantEffect: (TRunnerModel, TInstantEffect) -> Pair<TRunnerModel, Maybe<TMessage>>,
+        val processLateEffect: suspend (TRunnerModel, TLateEffect) -> (TRunnerModel) -> Pair<TRunnerModel, Maybe<TMessage>>,
         val processSubscription:
                 (TRunnerModel, TSubscriptionState) -> Triple<
                                 TRunnerModel, TSubscriptionState, Maybe<TMessage>>,
@@ -26,19 +33,28 @@ data class ProgramRunnerConfig<
 )
 
 data class ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState>(
+        TEffect,
+        TInstantEffect: TEffect,
+        TLateEffect: TEffect,
+        TMessage, TProgramModel,
+        TRunnerModel,
+        TSubscription,
+        TSubscriptionState>(
         val runnerConfig:
                 ProgramRunnerConfig<
                         TEffect,
+                        TInstantEffect,
+                        TLateEffect,
                         TMessage,
                         TProgramModel,
                         TRunnerModel,
                         TSubscription,
                         TSubscriptionState>,
-        val programConfig: ProgramConfig<TEffect, TMessage, TProgramModel, TSubscription>,
+        val programConfig: ProgramConfig<TEffect, TInstantEffect, TLateEffect, TMessage, TProgramModel, TSubscription>,
         val pendingMessages: List<TMessage>,
-        val pendingEffects: List<TEffect>,
-        val pendingLateEffects: List<Deferred<(TRunnerModel) -> Pair<TRunnerModel, Maybe<TMessage>>>>,
+        val pendingInstantEffects: List<TInstantEffect>,
+        val pendingLateEffects: List<TLateEffect>,
+        val runningLateEffects: List<Deferred<(TRunnerModel) -> Pair<TRunnerModel, Maybe<TMessage>>>>,
         val subscriptions: Map<TSubscription, TSubscriptionState>,
         val runnerModel: TRunnerModel,
         val programModel: TProgramModel,

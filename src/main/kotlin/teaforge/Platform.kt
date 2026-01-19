@@ -4,22 +4,32 @@ import kotlinx.coroutines.CoroutineScope
 import teaforge.*
 import teaforge.internal.*
 
-fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> initRunner(
+fun <
+        TEffect,
+        TInstantEffect: TEffect,
+        TLateEffect: TEffect,
+        TMessage,
+        TProgramModel,
+        TRunnerModel,
+        TSubscription,
+        TSubscriptionState> initRunner(
         runnerConfig:
                 ProgramRunnerConfig<
                         TEffect,
+                        TInstantEffect,
+                        TLateEffect,
                         TMessage,
                         TProgramModel,
                         TRunnerModel,
                         TSubscription,
                         TSubscriptionState>,
         runnerArgs: List<String>,
-        program: ProgramConfig<TEffect, TMessage, TProgramModel, TSubscription>,
+        program: ProgramConfig<TEffect, TInstantEffect, TLateEffect, TMessage, TProgramModel, TSubscription>,
         programArgs: List<String>
 ): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
+        TEffect, TInstantEffect, TLateEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
 
-        val (initialProgramModel, initialEffects) = program.init(programArgs)
+        val (initialProgramModel, initialInstantEffects, initialLateEffects) = program.init(programArgs)
 
         val runner =
                 ProgramRunnerInstance(
@@ -27,8 +37,9 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
                         programConfig = program,
                         programModel = initialProgramModel,
                         pendingMessages = emptyList(),
-                        pendingEffects = initialEffects,
-                        pendingLateEffects = emptyList(),
+                        pendingInstantEffects = initialInstantEffects,
+                        pendingLateEffects = initialLateEffects,
+                        runningLateEffects = emptyList(),
 
                         subscriptions = emptyMap(),
                         runnerModel = runnerConfig.initRunner(runnerArgs),
@@ -37,18 +48,28 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
         return updateSubscriptions(runner)
 }
 
-fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> stepProgram(
+fun <
+        TEffect,
+        TInstantEffect: TEffect,
+        TLateEffect: TEffect,
+        TMessage,
+        TProgramModel,
+        TRunnerModel,
+        TSubscription,
+        TSubscriptionState> stepProgram(
         scope: CoroutineScope,
         programRunner:
                 ProgramRunnerInstance<
                         TEffect,
+                        TInstantEffect,
+                        TLateEffect,
                         TMessage,
                         TProgramModel,
                         TRunnerModel,
                         TSubscription,
                         TSubscriptionState>
 ): ProgramRunnerInstance<
-        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
+        TEffect, TInstantEffect, TLateEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
         val runnerAfterStart =
                 programRunner.copy(
                         runnerModel =
@@ -63,6 +84,8 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
         val runnerAfterUpdatingSubscriptions:
                 ProgramRunnerInstance<
                         TEffect,
+                        TInstantEffect,
+                        TLateEffect,
                         TMessage,
                         TProgramModel,
                         TRunnerModel,
@@ -73,6 +96,8 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
         val runnerAfterProcessingMessages:
                 ProgramRunnerInstance<
                         TEffect,
+                        TInstantEffect,
+                        TLateEffect,
                         TMessage,
                         TProgramModel,
                         TRunnerModel,
@@ -80,13 +105,14 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
                         TSubscriptionState> =
                 processMessages(programRunner.programConfig, runnerAfterUpdatingSubscriptions)
 
-        val runnerAfterProcessingEffects = processPendingEffects(scope, runnerAfterProcessingMessages)
-        val runnerAfterProcessingLateEffects = processPendingLateEffects(runnerAfterProcessingEffects)
+        val runnerAfterProcessingInstantEffects = processPendingInstantEffects(runnerAfterProcessingMessages)
+        val runnerAfterProcessingLateEffects = processPendingLateEffects(scope, runnerAfterProcessingInstantEffects)
+        val runnerAfterRunningLateEffects = updateRunningLateEffects(runnerAfterProcessingLateEffects)
 
         val finalRunnerModel =
                 programRunner.runnerConfig.endOfUpdateCycle(
-                        runnerAfterProcessingLateEffects.runnerModel
+                        runnerAfterRunningLateEffects.runnerModel
                 )
 
-        return runnerAfterProcessingLateEffects.copy(runnerModel = finalRunnerModel)
+        return runnerAfterRunningLateEffects.copy(runnerModel = finalRunnerModel)
 }
