@@ -1,5 +1,6 @@
 package teaforge
 
+import kotlinx.coroutines.Deferred
 import teaforge.utils.Maybe
 
 data class ProgramConfig<TEffect, TMessage, TModel, TSubscription>(
@@ -11,7 +12,7 @@ data class ProgramConfig<TEffect, TMessage, TModel, TSubscription>(
 data class ProgramRunnerConfig<
         TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState>(
         val initRunner: (List<String>) -> TRunnerModel,
-        val processEffect: (TRunnerModel, TEffect) -> Pair<TRunnerModel, Maybe<TMessage>>,
+        val processEffect: suspend (TRunnerModel, TEffect) -> (TRunnerModel) -> Pair<TRunnerModel, Maybe<TMessage>>,
         val processSubscription:
                 (TRunnerModel, TSubscriptionState) -> Triple<
                                 TRunnerModel, TSubscriptionState, Maybe<TMessage>>,
@@ -37,6 +38,7 @@ data class ProgramRunnerInstance<
         val programConfig: ProgramConfig<TEffect, TMessage, TProgramModel, TSubscription>,
         val pendingMessages: List<TMessage>,
         val pendingEffects: List<TEffect>,
+        val pendingLateEffects: List<Deferred<(TRunnerModel) -> Pair<TRunnerModel, Maybe<TMessage>>>>,
         val subscriptions: Map<TSubscription, TSubscriptionState>,
         val runnerModel: TRunnerModel,
         val programModel: TProgramModel,

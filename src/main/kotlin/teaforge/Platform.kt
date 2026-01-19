@@ -1,5 +1,6 @@
 package teaforge.platform
 
+import kotlinx.coroutines.CoroutineScope
 import teaforge.*
 import teaforge.internal.*
 
@@ -27,6 +28,8 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
                         programModel = initialProgramModel,
                         pendingMessages = emptyList(),
                         pendingEffects = initialEffects,
+                        pendingLateEffects = emptyList(),
+
                         subscriptions = emptyMap(),
                         runnerModel = runnerConfig.initRunner(runnerArgs),
                 )
@@ -35,6 +38,7 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
 }
 
 fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> stepProgram(
+        scope: CoroutineScope,
         programRunner:
                 ProgramRunnerInstance<
                         TEffect,
@@ -76,12 +80,13 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
                         TSubscriptionState> =
                 processMessages(programRunner.programConfig, runnerAfterUpdatingSubscriptions)
 
-        val runnerAfterProcessingEffects = processPendingEffects(runnerAfterProcessingMessages)
+        val runnerAfterProcessingEffects = processPendingEffects(scope, runnerAfterProcessingMessages)
+        val runnerAfterProcessingLateEffects = processPendingLateEffects(runnerAfterProcessingEffects)
 
         val finalRunnerModel =
                 programRunner.runnerConfig.endOfUpdateCycle(
-                        runnerAfterProcessingEffects.runnerModel
+                        runnerAfterProcessingLateEffects.runnerModel
                 )
 
-        return runnerAfterProcessingEffects.copy(runnerModel = finalRunnerModel)
+        return runnerAfterProcessingLateEffects.copy(runnerModel = finalRunnerModel)
 }

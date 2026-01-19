@@ -1,10 +1,18 @@
 package teaforge.internal
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.job
 import teaforge.HistoryEntry
 import teaforge.HistoryEventSource
 import teaforge.ProgramConfig
 import teaforge.ProgramRunnerInstance
 import teaforge.utils.Maybe
+import teaforge.utils.unwrap
 
 fun <
         TEffect,
@@ -207,6 +215,7 @@ fun <
         TRunnerModel,
         TSubscription,
         TSubscriptionState> processPendingEffects(
+        scope: CoroutineScope,
         programRunner:
                 ProgramRunnerInstance<
                         TEffect,
@@ -217,30 +226,79 @@ fun <
                         TSubscriptionState>
 ): ProgramRunnerInstance<
         TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
-        val (finalModel, messages) =
+        val (finalModel, lateEffects) =
                 programRunner.pendingEffects.fold(
                         initial =
-                                Pair<TRunnerModel, List<TMessage>>(
+                                Pair<TRunnerModel, List<Deferred<(TRunnerModel) -> Pair<TRunnerModel, Maybe<TMessage>>>>>(
                                         programRunner.runnerModel,
                                         emptyList()
                                 ),
                         operation = { acc, effect ->
-                                val (model, messages) = acc
+                                val (model, lateEffects) = acc
 
-                                val (updatedModel, message) =
+                                val job = scope.async(Dispatchers.Default) {
                                         programRunner.runnerConfig.processEffect(model, effect)
-
-                                when (message) {
-                                        is Maybe.None -> Pair(updatedModel, messages)
-                                        is Maybe.Some ->
-                                                Pair(updatedModel, messages + message.value)
                                 }
+                                model to lateEffects + job
                         }
                 )
 
         return programRunner.copy(
                 runnerModel = finalModel,
                 pendingEffects = emptyList(),
-                pendingMessages = programRunner.pendingMessages + messages,
+                pendingLateEffects = programRunner.pendingLateEffects + lateEffects,
         )
 }
+
+
+fun <
+        TEffect,
+        TMessage,
+        TProgramModel,
+        TRunnerModel,
+        TSubscription,
+        TSubscriptionState> processPendingLateEffects(
+        programRunner: ProgramRunnerInstance<
+                TEffect,
+                TMessage,
+                TProgramModel,
+                TRunnerModel,
+                TSubscription,
+                TSubscriptionState>
+): ProgramRunnerInstance<
+        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
+
+        val (finalModel, finalMessages, finalLateEffects) = programRunner.pendingLateEffects.fold(
+                initial = Triple(
+                        programRunner.runnerModel,
+                        programRunner.pendingMessages,
+                        programRunner.pendingLateEffects
+                ),
+                operation = { (model, messages, lateEffectJobs), lateEffectJob ->
+
+                        getCompletedJob(lateEffectJob).unwrap(
+                                default = Triple(model, messages, lateEffectJobs),
+                                fn = { lateEffect ->
+                                        val (newModel, message) = lateEffect(model)
+                                        val updatedMessages = message.unwrap(
+                                                default = messages,
+                                                fn = { unwrapped -> messages + unwrapped }
+                                        )
+                                        val updatedLateEffects = lateEffectJobs - lateEffectJob
+                                        Triple(newModel, updatedMessages, updatedLateEffects)
+                                }
+                        )
+                }
+        )
+
+        return programRunner.copy(
+                runnerModel = finalModel,
+                pendingMessages = finalMessages,
+                pendingLateEffects = finalLateEffects
+        )
+}
+
+
+@OptIn(ExperimentalCoroutinesApi::class)
+fun <T> getCompletedJob(job: Deferred<T>) : Maybe<T> =
+        if (job.isCompleted) Maybe.Some(job.getCompleted()) else Maybe.None
