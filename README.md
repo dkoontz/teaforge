@@ -267,6 +267,64 @@ enum class IoPortStatus {
 2. **Error Handling**: Implement robust error handling for hardware interactions. Any errors should be communicated back to a program via a message.
 
 
+## Debug Logging
+
+TeaForge includes a debug logging system that records program state changes in JSONL format for use with external debuggers. This enables time-travel debugging and state inspection tools.
+
+### Enabling Debug Logging
+
+Configure your `ProgramRunnerConfig` to return `LoggerStatus.Enabled`:
+
+```kotlin
+val runnerConfig = ProgramRunnerConfig(
+    // ... other config ...
+    loggerStatus = {
+        LoggerStatus.Enabled(
+            DebugLoggingConfig(
+                getTimestamp = { System.currentTimeMillis() },
+                log = { json -> logFile.appendText(json + "\n") }
+            )
+        )
+    }
+)
+```
+
+To disable logging, return `LoggerStatus.Disabled`.
+
+### Log Format
+
+The debug log is a JSONL file (one JSON object per line) containing three entry types:
+
+**init** - Logged when the program initializes:
+```json
+{"type":"init","timestamp":1234567890,"model":{...},"effects":[...]}
+```
+
+**update** - Logged for each message processed:
+```json
+{"type":"update","timestamp":1234567890,"message":{...},"model":{...},"effects":[...]}
+```
+
+**subscriptionChange** - Logged when subscriptions are added or removed:
+```json
+{"type":"subscriptionChange","timestamp":1234567890,"started":[...],"stopped":[...]}
+```
+
+### Serialization
+
+The `TeaSerializer` uses Kotlin reflection to serialize program types:
+
+- Data classes include all properties
+- Sealed interface variants include a `_type` field with the qualified type name
+- Wrapper messages (e.g., `Message.Subsystem(innerMessage)`) include an `_inner` field
+- Functions are serialized as references with `_functionId` and `_signature` fields
+- Enums are serialized with their qualified name
+
+### Schema
+
+A JSON Schema for the log format is available at `docs/tea-debug-log-schema.json`.
+
+
 ## Using TeaForge as a Dependency
 
 ### Maven
@@ -277,7 +335,7 @@ To use TeaForge in your Maven project, add the following to your `pom.xml`:
 <dependency>
     <groupId>io.github.teaforge</groupId>
     <artifactId>teaforge</artifactId>
-    <version>0.1.5</version>
+    <version>0.1.6</version>
 </dependency>
 ```
 
@@ -286,13 +344,13 @@ To use TeaForge in your Maven project, add the following to your `pom.xml`:
 To use TeaForge in your Gradle project, add the following to your `build.gradle` file
 
 ```groovy
-implementation 'io.github.teaforge:teaforge:0.1.5'
+implementation 'io.github.teaforge:teaforge:0.1.6'
 ```
 
 or `build.gradle.kts` file
 
 ```kotlin
-implementation("io.github.teaforge:teaforge:0.1.5")
+implementation("io.github.teaforge:teaforge:0.1.6")
 ```
 
 ## Building

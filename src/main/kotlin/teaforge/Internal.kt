@@ -6,8 +6,10 @@ import teaforge.EffectResult
 import teaforge.HistoryEntry
 import teaforge.HistoryEventSource
 import teaforge.InFlightEffect
+import teaforge.LoggerStatus
 import teaforge.ProgramConfig
 import teaforge.ProgramRunnerInstance
+import teaforge.debugger.TeaSerializer
 import teaforge.utils.Maybe
 
 fun <
@@ -49,6 +51,27 @@ fun <
                 val (runnerModel, programModel, currentEffects) = acc
                 val (updatedProgramModel, newEffects) =
                     program.update(message, programModel)
+
+                when (val status = programRunner.runnerConfig.loggerStatus()) {
+                    is LoggerStatus.Disabled -> {}
+                    is LoggerStatus.Enabled -> {
+                        val logging = status.config
+                        val timestamp = logging.getTimestamp()
+                        val messageJson =
+                            TeaSerializer.serializeMessage(message as Any).toJsonString()
+                        val modelJson =
+                            TeaSerializer.serialize(updatedProgramModel).toJsonString()
+                        val effectsJson =
+                            newEffects.joinToString(",") {
+                                TeaSerializer.serialize(it).toJsonString()
+                            }
+                        val json =
+                            """{"type":"update","timestamp":$timestamp,""" +
+                                """"message":$messageJson,"model":$modelJson,"effects":[$effectsJson]}"""
+                        logging.log(json)
+                    }
+                }
+
                 val historyEntry =
                     HistoryEntry(
                         source = HistoryEventSource.ProgramMessage(message),
@@ -107,6 +130,26 @@ fun <
 
         val removedSubscriptions =
             previousSubscriptions.filterKeys { it !in currentSubscriptions }
+
+        when (val status = programRunner.runnerConfig.loggerStatus()) {
+            is LoggerStatus.Disabled -> {}
+            is LoggerStatus.Enabled -> {
+                val logging = status.config
+                val timestamp = logging.getTimestamp()
+                val startedJson =
+                    newSubscriptions.joinToString(",") {
+                        TeaSerializer.serialize(it).toJsonString()
+                    }
+                val stoppedJson =
+                    removedSubscriptions.keys.joinToString(",") {
+                        TeaSerializer.serialize(it).toJsonString()
+                    }
+                val json =
+                    """{"type":"subscriptionChange","timestamp":$timestamp,""" +
+                        """"started":[$startedJson],"stopped":[$stoppedJson]}"""
+                logging.log(json)
+            }
+        }
 
         val remainingSubscriptions =
             previousSubscriptions.filterKeys { it in currentSubscriptions }

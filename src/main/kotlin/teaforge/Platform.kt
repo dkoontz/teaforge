@@ -1,9 +1,11 @@
 package teaforge.platform
 
 import kotlinx.coroutines.CoroutineScope
+import teaforge.LoggerStatus
 import teaforge.ProgramConfig
 import teaforge.ProgramRunnerConfig
 import teaforge.ProgramRunnerInstance
+import teaforge.debugger.TeaSerializer
 import teaforge.internal.activateOrDeactivateSubscriptions
 import teaforge.internal.collectCompletedEffects
 import teaforge.internal.processMessages
@@ -31,6 +33,20 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
     TSubscriptionState,
     > {
     val (initialProgramModel, initialEffects) = program.init(programArgs)
+
+    when (val status = runnerConfig.loggerStatus()) {
+        is LoggerStatus.Disabled -> {}
+        is LoggerStatus.Enabled -> {
+            val logging = status.config
+            val timestamp = logging.getTimestamp()
+            val modelJson = TeaSerializer.serialize(initialProgramModel).toJsonString()
+            val effectsJson =
+                initialEffects.joinToString(",") { TeaSerializer.serialize(it).toJsonString() }
+            val json =
+                """{"type":"init","timestamp":$timestamp,"model":$modelJson,"effects":[$effectsJson]}"""
+            logging.log(json)
+        }
+    }
 
     val runner =
         ProgramRunnerInstance(

@@ -33,6 +33,19 @@ data class ProgramConfig<TEffect, TMessage, TModel, TSubscription>(
     val subscriptions: (TModel) -> List<TSubscription>,
 )
 
+data class DebugLoggingConfig(
+    val getTimestamp: () -> Long,
+    val log: (json: String) -> Unit,
+)
+
+sealed interface LoggerStatus {
+    data object Disabled : LoggerStatus
+
+    data class Enabled(
+        val config: DebugLoggingConfig,
+    ) : LoggerStatus
+}
+
 data class ProgramRunnerConfig<
     TEffect,
     TMessage,
@@ -53,6 +66,7 @@ data class ProgramRunnerConfig<
     val startOfUpdateCycle: (TRunnerModel) -> TRunnerModel,
     val endOfUpdateCycle: (TRunnerModel) -> TRunnerModel,
     val processHistoryEntry: (TRunnerModel, HistoryEntry<TMessage, TProgramModel>) -> TRunnerModel,
+    val loggerStatus: () -> LoggerStatus,
 )
 
 data class ProgramRunnerInstance<
