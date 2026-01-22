@@ -1,5 +1,6 @@
 package teaforge.platform
 
+import kotlinx.coroutines.CoroutineScope
 import teaforge.*
 import teaforge.internal.*
 
@@ -29,6 +30,7 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
                         pendingEffects = initialEffects,
                         subscriptions = emptyMap(),
                         runnerModel = runnerConfig.initRunner(runnerArgs),
+                        inFlightEffects = emptyList(),
                 )
 
         return updateSubscriptions(runner)
@@ -42,7 +44,8 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
                         TProgramModel,
                         TRunnerModel,
                         TSubscription,
-                        TSubscriptionState>
+                        TSubscriptionState>,
+        scope: CoroutineScope
 ): ProgramRunnerInstance<
         TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
         val runnerAfterStart =
@@ -53,8 +56,11 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
                                 )
                 )
 
+        val runnerAfterCollectingCompletedEffects =
+                collectCompletedEffects(runnerAfterStart)
+
         val runnerAfterProcessingSubscriptionAdditionsAndRemovals =
-                activateOrDeactivateSubscriptions(runnerAfterStart)
+                activateOrDeactivateSubscriptions(runnerAfterCollectingCompletedEffects)
 
         val runnerAfterUpdatingSubscriptions:
                 ProgramRunnerInstance<
@@ -76,7 +82,7 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
                         TSubscriptionState> =
                 processMessages(programRunner.programConfig, runnerAfterUpdatingSubscriptions)
 
-        val runnerAfterProcessingEffects = processPendingEffects(runnerAfterProcessingMessages)
+        val runnerAfterProcessingEffects = processPendingEffects(runnerAfterProcessingMessages, scope)
 
         val finalRunnerModel =
                 programRunner.runnerConfig.endOfUpdateCycle(

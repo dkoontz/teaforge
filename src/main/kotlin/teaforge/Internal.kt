@@ -1,7 +1,11 @@
 package teaforge.internal
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import teaforge.EffectResult
 import teaforge.HistoryEntry
 import teaforge.HistoryEventSource
+import teaforge.InFlightEffect
 import teaforge.ProgramConfig
 import teaforge.ProgramRunnerInstance
 import teaforge.utils.Maybe
@@ -200,6 +204,53 @@ fun <
         )
 }
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+fun <
+        TEffect,
+        TMessage,
+        TProgramModel,
+        TRunnerModel,
+        TSubscription,
+        TSubscriptionState> collectCompletedEffects(
+        programRunner:
+                ProgramRunnerInstance<
+                        TEffect,
+                        TMessage,
+                        TProgramModel,
+                        TRunnerModel,
+                        TSubscription,
+                        TSubscriptionState>
+): ProgramRunnerInstance<
+        TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
+        val (completedEffects, stillInFlight) = programRunner.inFlightEffects.partition {
+                it.asyncProcess.isCompleted
+        }
+
+        if (completedEffects.isEmpty()) {
+                return programRunner
+        }
+
+        val (finalModel, messages) = completedEffects.fold(
+                initial = Pair<TRunnerModel, List<TMessage>>(programRunner.runnerModel, emptyList()),
+                operation = { acc, inFlightEffect ->
+                        val (model, messages) = acc
+                        val completionFunction = inFlightEffect.asyncProcess.getCompleted()
+                        val (updatedModel, message) = completionFunction(model)
+
+                        when (message) {
+                                is Maybe.None -> Pair(updatedModel, messages)
+                                is Maybe.Some -> Pair(updatedModel, messages + message.value)
+                        }
+                }
+        )
+
+        return programRunner.copy(
+                runnerModel = finalModel,
+                inFlightEffects = stillInFlight,
+                pendingMessages = programRunner.pendingMessages + messages,
+        )
+}
+
 fun <
         TEffect,
         TMessage,
@@ -214,33 +265,56 @@ fun <
                         TProgramModel,
                         TRunnerModel,
                         TSubscription,
-                        TSubscriptionState>
+                        TSubscriptionState>,
+        scope: CoroutineScope
 ): ProgramRunnerInstance<
         TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState> {
-        val (finalModel, messages) =
-                programRunner.pendingEffects.fold(
-                        initial =
-                                Pair<TRunnerModel, List<TMessage>>(
-                                        programRunner.runnerModel,
-                                        emptyList()
-                                ),
-                        operation = { acc, effect ->
-                                val (model, messages) = acc
+        data class EffectEvaluationState(
+                val model: TRunnerModel,
+                val messages: List<TMessage>,
+                val newInFlightEffects: List<InFlightEffect<TEffect, TRunnerModel, TMessage>>
+        )
 
-                                val (updatedModel, message) =
-                                        programRunner.runnerConfig.processEffect(model, effect)
+        val initialState = EffectEvaluationState(
+                model = programRunner.runnerModel,
+                messages = emptyList(),
+                newInFlightEffects = emptyList()
+        )
 
-                                when (message) {
-                                        is Maybe.None -> Pair(updatedModel, messages)
-                                        is Maybe.Some ->
-                                                Pair(updatedModel, messages + message.value)
+        val finalState = programRunner.pendingEffects.fold(
+                initial = initialState,
+                operation = { acc, effect ->
+                        val result = programRunner.runnerConfig.processEffect(acc.model, effect)
+
+                        when (result) {
+                                is EffectResult.Sync -> {
+                                        when (result.message) {
+                                                is Maybe.None -> acc.copy(model = result.updatedModel)
+                                                is Maybe.Some -> acc.copy(
+                                                        model = result.updatedModel,
+                                                        messages = acc.messages + result.message.value
+                                                )
+                                        }
+                                }
+                                is EffectResult.Async -> {
+                                        val deferred = scope.async { result.completion() }
+                                        val inFlightEffect = InFlightEffect(
+                                                effect = effect,
+                                                asyncProcess = deferred
+                                        )
+                                        acc.copy(
+                                                model = result.updatedModel,
+                                                newInFlightEffects = acc.newInFlightEffects + inFlightEffect
+                                        )
                                 }
                         }
-                )
+                }
+        )
 
         return programRunner.copy(
-                runnerModel = finalModel,
+                runnerModel = finalState.model,
                 pendingEffects = emptyList(),
-                pendingMessages = programRunner.pendingMessages + messages,
+                pendingMessages = programRunner.pendingMessages + finalState.messages,
+                inFlightEffects = programRunner.inFlightEffects + finalState.newInFlightEffects,
         )
 }

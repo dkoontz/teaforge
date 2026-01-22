@@ -1,6 +1,31 @@
 package teaforge
 
+import kotlinx.coroutines.Deferred
 import teaforge.utils.Maybe
+
+// The completion function receives current model, returns updated model + optional message
+typealias EffectCompletion<TRunnerModel, TMessage> =
+    (TRunnerModel) -> Pair<TRunnerModel, Maybe<TMessage>>
+
+sealed interface EffectResult<TRunnerModel, TMessage> {
+    // Synchronous effect - completes immediately
+    data class Sync<TRunnerModel, TMessage>(
+        val updatedModel: TRunnerModel,
+        val message: Maybe<TMessage>
+    ) : EffectResult<TRunnerModel, TMessage>
+
+    // Async effect - immediate model update + deferred completion
+    data class Async<TRunnerModel, TMessage>(
+        val updatedModel: TRunnerModel,
+        val completion: suspend () -> EffectCompletion<TRunnerModel, TMessage>
+    ) : EffectResult<TRunnerModel, TMessage>
+}
+
+// Tracks an in-flight async effect
+data class InFlightEffect<TEffect, TRunnerModel, TMessage>(
+    val effect: TEffect,
+    val asyncProcess: Deferred<EffectCompletion<TRunnerModel, TMessage>>
+)
 
 data class ProgramConfig<TEffect, TMessage, TModel, TSubscription>(
         val init: (List<String>) -> Pair<TModel, List<TEffect>>,
@@ -11,7 +36,7 @@ data class ProgramConfig<TEffect, TMessage, TModel, TSubscription>(
 data class ProgramRunnerConfig<
         TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptionState>(
         val initRunner: (List<String>) -> TRunnerModel,
-        val processEffect: (TRunnerModel, TEffect) -> Pair<TRunnerModel, Maybe<TMessage>>,
+        val processEffect: (TRunnerModel, TEffect) -> EffectResult<TRunnerModel, TMessage>,
         val processSubscription:
                 (TRunnerModel, TSubscriptionState) -> Triple<
                                 TRunnerModel, TSubscriptionState, Maybe<TMessage>>,
@@ -40,6 +65,7 @@ data class ProgramRunnerInstance<
         val subscriptions: Map<TSubscription, TSubscriptionState>,
         val runnerModel: TRunnerModel,
         val programModel: TProgramModel,
+        val inFlightEffects: List<InFlightEffect<TEffect, TRunnerModel, TMessage>>,
 )
 
 sealed interface HistoryEventSource<TMessage> {
