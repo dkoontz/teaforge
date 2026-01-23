@@ -109,23 +109,58 @@ data class PlatformHardware(
 
 Teaforge will take care of deciding when effects need to be processed, but it doesn't know anything about a platform's effects, those were defined by the platform. So a platform is required to provide a function that can process an effect.
 
+Effects can be either synchronous (completing immediately) or asynchronous (completing later), they communicate this by returning an `EffectResult` which can be either `Sync` or `Async`.
+
 ```kotlin
 fun <TMessage, TModel> processEffect(
         model: PlatformSpecificModel<TMessage, TModel>,
         effect: Effect<TMessage>,
-): Pair<PlatformSpecificModel<TMessage, TModel>, Maybe<TMessage>> {
+): EffectResult<PlatformSpecificModel<TMessage, TModel>, TMessage> {
     return when (effect) {
-        is Effect.ReadFile -> {
-            // do platform specific File IO logic here, updating the platform model as needed, then return that updated model along with a message
-            Pair(updatedModel, Maybe.Some(effect.message(result)))
-        }
+        // Synchronous effect - completes immediately
         is Effect.SetPwmMotorSpeed -> {
-            // do logic to communicate with PWM motor, in this case there's nothing to update in the model and no message to return
-            Pair(model, Maybe.None)
+            // do logic to communicate with PWM motor
+            EffectResult.Sync(
+                updatedModel = model,
+                message = Maybe.None
+            )
+        }
+
+        // Synchronous effect with a message result
+        is Effect.ReadConfig -> {
+            val config = readConfigFile()
+            EffectResult.Sync(
+                updatedModel = model,
+                message = Maybe.Some(effect.message(config))
+            )
+        }
+
+        // Asynchronous effect - runs in background
+        is Effect.HttpRequest -> {
+            EffectResult.Async(
+                updatedModel = model.copy(requestsInFlight = model.requestsInFlight + 1),
+                completion = {
+                    // This action runs asynchronously
+                    val result = httpClient.fetch(effect.url)
+
+                    // Return a completion function that receives the CURRENT model
+                    // when the async work finishes. The model could have been updated
+                    // by other effects / subscriptions since the effect was started so 
+                    // you cannot use the local `model` variable.
+                    { currentModel ->
+                        Pair(
+                            currentModel.copy(requestsInFlight = currentModel.requestsInFlight - 1),
+                            Maybe.Some(effect.message(result))
+                        )
+                    }
+                }
+            )
         }
     }
 }
 ```
+
+The async effect pattern ensures that when multiple async effects complete in different orders, each completion function receives the up-to-date model state rather than a stale snapshot from when the effect was initiated.
 
 ### 5. Implement the Subscription Handler
 
@@ -177,13 +212,18 @@ Finally you need to choose when you want to initialize and step the Teaforge sys
     }
 ```
 
-Then when appropriate you tell the Teaforge instance to step.
+Then when appropriate you tell the Teaforge instance to step. The `stepProgram` function requires a `CoroutineScope` which is used to launch and manage async effects.
 
 ```kotlin
-    while(programIsRunning) {
-        teaforge.platform.stepProgram(teaforgeInstance)
+    // Example using a coroutine scope
+    runBlocking {
+        while(programIsRunning) {
+            teaforgeRunner = teaforge.platform.stepProgram(teaforgeRunner, this)
+        }
     }
 ```
+
+The CoroutineScope allows async effects to be launched and their completions to be collected on subsequent steps.
 
 
 ## Best Practices for Platform Implementation
@@ -237,7 +277,7 @@ To use TeaForge in your Maven project, add the following to your `pom.xml`:
 <dependency>
     <groupId>io.github.teaforge</groupId>
     <artifactId>teaforge</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.5</version>
 </dependency>
 ```
 
@@ -246,19 +286,19 @@ To use TeaForge in your Maven project, add the following to your `pom.xml`:
 To use TeaForge in your Gradle project, add the following to your `build.gradle` file
 
 ```groovy
-implementation 'io.github.teaforge:teaforge:0.1.0'
+implementation 'io.github.teaforge:teaforge:0.1.5'
 ```
 
 or `build.gradle.kts` file
 
 ```kotlin
-implementation("io.github.teaforge:teaforge:0.1.0")
+implementation("io.github.teaforge:teaforge:0.1.5")
 ```
 
-## Building a Maven package
+## Building
 
-Use `./mvnw clean package` to build the package.
+Use `./gradlew build` to build the package.
 
-You can install it locally using `./mvnw install`.
+You can install it locally using `./gradlew publishToMavenLocal`.
 
-To publish the package there is a GitHub workflow (defined in .github/workflows) that will both make a release containing the jar file and also publish to the GitHub Maven repository.
+To publish the package, manually run the Release workflow from the GitHub Actions tab. The workflow reads the version from `build.gradle.kts` and creates a release with that version.
