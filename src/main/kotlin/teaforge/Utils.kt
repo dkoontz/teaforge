@@ -31,7 +31,10 @@ fun <T> Maybe<T>.valueOrDefault(default: T): T {
     }
 }
 
-fun <T, U> Maybe<T>.unwrap(default: U, fn: (T) -> U): U {
+fun <T, U> Maybe<T>.unwrap(
+    default: U,
+    fn: (T) -> U,
+): U {
     return when (this) {
         is Maybe.None -> default
         is Maybe.Some -> fn(value)
@@ -39,7 +42,7 @@ fun <T, U> Maybe<T>.unwrap(default: U, fn: (T) -> U): U {
 }
 
 fun <Success, Error, MappedSuccess> Result<Success, Error>.map(
-        fn: (Success) -> MappedSuccess
+    fn: (Success) -> MappedSuccess,
 ): Result<MappedSuccess, Error> {
     return when (this) {
         is Result.Error -> Result.Error<MappedSuccess, Error>(value)
@@ -48,7 +51,7 @@ fun <Success, Error, MappedSuccess> Result<Success, Error>.map(
 }
 
 fun <Success, Error, MappedSuccess> Result<Success, Error>.andThen(
-        fn: (Success) -> Result<MappedSuccess, Error>
+    fn: (Success) -> Result<MappedSuccess, Error>,
 ): Result<MappedSuccess, Error> {
     return when (this) {
         is Result.Error -> Result.Error<MappedSuccess, Error>(value)
@@ -64,8 +67,8 @@ fun <Success, Error> Result<Success, Error>.valueOrDefault(default: Success): Su
 }
 
 fun <Success, Error, MappedSuccess> Result<Success, Error>.unwrap(
-        default: MappedSuccess,
-        fn: (Success) -> MappedSuccess
+    default: MappedSuccess,
+    fn: (Success) -> MappedSuccess,
 ): MappedSuccess {
     return when (this) {
         is Result.Error -> default
@@ -77,7 +80,10 @@ infix fun <T, U> T.then(fn: (T) -> U): U {
     return fn(this)
 }
 
-fun <T> conditional(item: T, condition: Boolean): List<T> {
+fun <T> conditional(
+    item: T,
+    condition: Boolean,
+): List<T> {
     return if (condition) {
         listOf(item)
     } else {

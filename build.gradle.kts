@@ -2,6 +2,7 @@ plugins {
     kotlin("jvm") version "1.9.0"
     `maven-publish`
     id("com.github.breadmoirai.github-release") version "2.5.2"
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.0"
 }
 
 project.group = "io.github.dkoontz"
@@ -66,3 +67,8 @@ githubRelease {
 tasks.named("githubRelease") { dependsOn("jar") }
 
 tasks.named("publish") { dependsOn("compileKotlin") }
+
+// Run ktlint formatting before compilation
+tasks.named("compileKotlin") { dependsOn("ktlintFormat") }
+
+tasks.named("compileTestKotlin") { dependsOn("ktlintFormat") }
