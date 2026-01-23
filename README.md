@@ -65,7 +65,7 @@ sealed interface Effect<out TMessage> {
 
 ### 2. Define Platform-Specific Subscription Type
 
-Subscriptions represent data sources that are ongoing. They are very similar to Effects in that they also produce a Message to communicate back to a program but unlike an Effect a Subscription is an ongoing producer of Messages. Making a HTTP request would be an Effect since it either succeeds or fails. Getting the current system milliseconds could be done once as an Effect but more likely would be a Subscription since if you need the time once you likely will need it every step of the program. 
+Subscriptions represent data sources that are ongoing. They are very similar to Effects in that they also produce a Message to communicate back to a program but unlike an Effect a Subscription is an ongoing producer of Messages. Making a HTTP request would be an Effect since it either succeeds or fails. Getting the current system milliseconds could be done once as an Effect but more likely would be a Subscription since if you need the time once you likely will need it every step of the program.
 
 ```kotlin
 sealed interface Subscription<out TMessage> {
@@ -75,7 +75,7 @@ sealed interface Subscription<out TMessage> {
         val pollingIntervalMs: Int,
         val message: (Double) -> TMessage
     ) : Subscription<TMessage>
-    
+
     // Only sends a message when the button's value changes
     data class ButtonValueChaged<TMessage>(
         val buttonId : ButtonId
@@ -92,7 +92,7 @@ Your platform model contains platform-specific state:
 data class PlatformModel<TMessage, TModel>(
     // Track message history if needed
     val messageHistory: List<HistoryEntry<TMessage, TModel>>,
-    
+
     // Platform-specific resources
     val hardware: PlatformHardware,
 )
@@ -145,7 +145,7 @@ fun <TMessage, TModel> processEffect(
 
                     // Return a completion function that receives the CURRENT model
                     // when the async work finishes. The model could have been updated
-                    // by other effects / subscriptions since the effect was started so 
+                    // by other effects / subscriptions since the effect was started so
                     // you cannot use the local `model` variable.
                     { currentModel ->
                         Pair(
@@ -174,18 +174,18 @@ fun <TMessage, TModel> processSubscription(
     return when (subscriptionState) {
         // Update a subscription that gets the value from a GPIO pin
         is SubscriptionState.IoPortValue -> runReadIoPort(model, subscriptionState)
-        
+
         // This subscription sends a message every nth time the program is stepped forward
         is SubscriptionState.EveryN ->
             val config = subscriptionState.config
-            val updatedSubscriptionState = 
+            val updatedSubscriptionState =
                 subscriptionState.copy(times = subscriptionState.times + 1)
-            
+
             // if there have been enough steps, send the message
             if(updatedSubscriptionState.times > config.n) {
-                Triple( 
-                    model, 
-                    updatedSubscriptionState.copy(times = 0), 
+                Triple(
+                    model,
+                    updatedSubscriptionState.copy(times = 0),
                     Maybe.Some(config.message(Unit)
                 )
             }
@@ -302,3 +302,32 @@ Use `./gradlew build` to build the package.
 You can install it locally using `./gradlew publishToMavenLocal`.
 
 To publish the package, manually run the Release workflow from the GitHub Actions tab. The workflow reads the version from `build.gradle.kts` and creates a release with that version.
+
+## Code Formatting
+
+This project uses [ktlint](https://pinterest.github.io/ktlint/) for consistent Kotlin code formatting. Formatting rules are configured in `.editorconfig`.
+
+### Gradle Integration
+
+- Code is automatically formatted before compilation
+- A pre-push hook prevents pushing unformatted code (works on macOS, Linux, and Windows)
+- To manually format: `./gradlew ktlintFormat` (or `gradlew.bat ktlintFormat` on Windows)
+- To check formatting: `./gradlew ktlintCheck`
+
+### Git Hooks Setup
+
+Run `./gradlew build` (or `./gradlew installGitHooks`) to install the pre-push hook. The hook is generated as a platform-appropriate script:
+- **macOS/Linux**: Shell script
+- **Windows**: Batch script (works with native Git and IntelliJ's Git integration)
+
+### IntelliJ IDEA Setup
+
+For real-time linting while editing, install the [ktlint plugin](https://plugins.jetbrains.com/plugin/15057-ktlint) for IntelliJ IDEA:
+
+1. Go to **Settings** → **Plugins** → **Marketplace**
+2. Search for "ktlint" and install the plugin
+3. Restart IntelliJ IDEA
+4. Go to **Intellij IDEA** -> **Settings** -> **KtLint**
+5. Under **Project settings** / **Mode** select "Distract free" and enable "on save"
+
+The plugin will use the `.editorconfig` settings to highlight formatting issues as you type.

@@ -72,3 +72,61 @@ tasks.named("publish") { dependsOn("compileKotlin") }
 tasks.named("compileKotlin") { dependsOn("ktlintFormat") }
 
 tasks.named("compileTestKotlin") { dependsOn("ktlintFormat") }
+
+// Install git pre-push hook that works cross-platform
+tasks.register("installGitHooks") {
+    group = "build setup"
+    description = "Installs git pre-push hook for ktlint checking"
+
+    val hooksDir = file(".git/hooks")
+    val prePushHook = file(".git/hooks/pre-push")
+
+    outputs.file(prePushHook)
+
+    doLast {
+        if (!hooksDir.exists()) {
+            hooksDir.mkdirs()
+        }
+
+        val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+
+        if (isWindows) {
+            // Windows batch script - works with native Windows Git and IntelliJ
+            prePushHook.writeText(
+                """
+                @echo off
+                echo Running ktlint check...
+                call gradlew.bat ktlintCheck --quiet
+                if errorlevel 1 (
+                    echo.
+                    echo ktlint check failed.
+                    echo Please run 'gradlew.bat ktlintFormat' and commit the changes before pushing.
+                    exit /b 1
+                )
+                echo ktlint check passed.
+                """.trimIndent(),
+            )
+        } else {
+            // Unix shell script - works on macOS, Linux
+            prePushHook.writeText(
+                """
+                #!/bin/sh
+                echo "Running ktlint check..."
+                ./gradlew ktlintCheck --quiet
+                if [ ${'$'}? -ne 0 ]; then
+                    echo ""
+                    echo "ktlint check failed."
+                    echo "Please run './gradlew ktlintFormat' and commit the changes before pushing."
+                    exit 1
+                fi
+                echo "ktlint check passed."
+                """.trimIndent(),
+            )
+            prePushHook.setExecutable(true)
+        }
+
+        println("Git pre-push hook installed for ${if (isWindows) "Windows" else "Unix"}")
+    }
+}
+
+tasks.named("build") { dependsOn("installGitHooks") }
