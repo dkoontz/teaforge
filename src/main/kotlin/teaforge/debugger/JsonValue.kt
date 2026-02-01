@@ -7,6 +7,12 @@ package teaforge.debugger
 sealed interface JsonValue {
     fun toJsonString(): String
 
+    /**
+     * Convert to JSON string with dictionary compression.
+     * Keys and string values are replaced with dictionary references.
+     */
+    fun toCompressedJsonString(dict: StringDictionary): String
+
     data class JsonObject(val entries: Map<String, JsonValue>) : JsonValue {
         constructor(vararg pairs: Pair<String, JsonValue>) : this(pairs.toMap())
 
@@ -18,6 +24,18 @@ sealed interface JsonValue {
                 postfix = "}",
             ) { (key, value) ->
                 "\"${escapeString(key)}\":${value.toJsonString()}"
+            }
+        }
+
+        override fun toCompressedJsonString(dict: StringDictionary): String {
+            if (entries.isEmpty()) return "{}"
+            return entries.entries.joinToString(
+                separator = ",",
+                prefix = "{",
+                postfix = "}",
+            ) { (key, value) ->
+                val compressedKey = dict.getReference(key)
+                "\"$compressedKey\":${value.toCompressedJsonString(dict)}"
             }
         }
 
@@ -40,10 +58,24 @@ sealed interface JsonValue {
                 postfix = "]",
             ) { it.toJsonString() }
         }
+
+        override fun toCompressedJsonString(dict: StringDictionary): String {
+            if (elements.isEmpty()) return "[]"
+            return elements.joinToString(
+                separator = ",",
+                prefix = "[",
+                postfix = "]",
+            ) { it.toCompressedJsonString(dict) }
+        }
     }
 
     data class JsonString(val value: String) : JsonValue {
         override fun toJsonString(): String = "\"${escapeString(value)}\""
+
+        override fun toCompressedJsonString(dict: StringDictionary): String {
+            val ref = dict.getReference(value)
+            return "\"$ref\""
+        }
     }
 
     data class JsonNumber(val value: Number) : JsonValue {
@@ -53,14 +85,20 @@ sealed interface JsonValue {
                 is Float -> if (value.isNaN() || value.isInfinite()) "null" else value.toString()
                 else -> value.toString()
             }
+
+        override fun toCompressedJsonString(dict: StringDictionary): String = toJsonString()
     }
 
     data class JsonBoolean(val value: Boolean) : JsonValue {
         override fun toJsonString(): String = value.toString()
+
+        override fun toCompressedJsonString(dict: StringDictionary): String = toJsonString()
     }
 
     data object JsonNull : JsonValue {
         override fun toJsonString(): String = "null"
+
+        override fun toCompressedJsonString(dict: StringDictionary): String = "null"
     }
 
     companion object {

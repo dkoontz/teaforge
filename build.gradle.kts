@@ -56,7 +56,7 @@ githubRelease {
     token(System.getenv("GITHUB_TOKEN") ?: "")
     owner.set("dkoontz")
     repo.set(project.name)
-    tagName.set("${project.version}")
+    tagName.set("v${project.version}")
     releaseName.set("Release ${project.version}")
     targetCommitish.set("main")
     body.set("Automated release for version ${project.version}")

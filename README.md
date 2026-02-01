@@ -282,7 +282,8 @@ val runnerConfig = ProgramRunnerConfig(
         LoggerStatus.Enabled(
             DebugLoggingConfig(
                 getTimestamp = { System.currentTimeMillis() },
-                log = { json -> logFile.appendText(json + "\n") }
+                log = { json -> logFile.appendText(json + "\n") },
+                compressionEnabled = true,
             )
         )
     }
@@ -293,7 +294,7 @@ To disable logging, return `LoggerStatus.Disabled`.
 
 ### Log Format
 
-The debug log is a JSONL file (one JSON object per line) containing three entry types:
+The debug log is a JSONL file (one JSON object per line). When compression is disabled, it contains three entry types:
 
 **init** - Logged when the program initializes:
 ```json
@@ -309,6 +310,32 @@ The debug log is a JSONL file (one JSON object per line) containing three entry 
 ```json
 {"type":"subscriptionChange","timestamp":1234567890,"started":[...],"stopped":[...]}
 ```
+
+### LZ78-Style Compression
+
+When `compressionEnabled = true`, the log uses dictionary-based compression to reduce file sizes. Repeated strings (type names, property keys, string values) are replaced with compact references like `@0`, `@5`.
+
+**Compressed log structure:**
+
+```json
+{"type":"header","version":1,"compression":"stringDict"}
+{"type":"stringDict","strings":{"0":"_type","1":"Model","2":"swerve","3":"SwerveSubsystem.Model"}}
+{"type":"init","timestamp":1234567890,"model":{"@0":"@1","@2":{"@0":"@3"}}}
+{"type":"stringDict","strings":{"4":"Message"}}
+{"type":"update","timestamp":1234567891,"message":{"@0":"@4"},"model":{"@0":"@1","@2":{"@0":"@3"}}}
+```
+
+The compression provides significant file size reduction for logs with repetitive type names and property keys. Dictionary entries (`stringDict`) are emitted before the log entries that first use them.
+
+**What gets compressed:**
+- `_type` values (e.g., `"SwerveSubsystem.Model"` → `"@3"`)
+- Property names/keys (e.g., `"leftJoystick"` → `"@5"`)
+- String values (repeated string constants)
+
+**What stays uncompressed:**
+- Top-level entry fields (`type`, `timestamp`, `model`, etc.)
+- Numeric values
+- Boolean values
 
 ### Serialization
 

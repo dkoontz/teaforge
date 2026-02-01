@@ -2,13 +2,56 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://teaforge.dev/schemas/tea-debug-log.json",
   "title": "TEA Debug Log Entry",
-  "description": "Schema for TEA (The Elm Architecture) debug log entries in JSONL format. Each line in the log file is a single JSON object conforming to one of the entry types.",
+  "description": "Schema for TEA (The Elm Architecture) debug log entries in JSONL format. Each line in the log file is a single JSON object conforming to one of the entry types. Uses LZ78-style dictionary compression where string keys and values are replaced with integer references (e.g., '@0', '@5'). New strings are defined in stringDict entries before their first use.",
   "oneOf": [
+    { "$ref": "#/$defs/headerEntry" },
+    { "$ref": "#/$defs/stringDictEntry" },
     { "$ref": "#/$defs/initEntry" },
     { "$ref": "#/$defs/updateEntry" },
     { "$ref": "#/$defs/subscriptionChangeEntry" }
   ],
   "$defs": {
+    "headerEntry": {
+      "type": "object",
+      "description": "Header entry - first line of a compressed log file. Indicates the log format version and compression type.",
+      "properties": {
+        "type": {
+          "const": "header",
+          "description": "Entry type discriminator"
+        },
+        "version": {
+          "type": "integer",
+          "description": "Log format version. Version 1 uses string dictionary compression.",
+          "const": 1
+        },
+        "compression": {
+          "type": "string",
+          "description": "Compression type. 'stringDict' indicates LZ78-style dictionary compression where repeated strings are replaced with '@N' references.",
+          "enum": ["stringDict"]
+        }
+      },
+      "required": ["type", "version", "compression"],
+      "additionalProperties": false
+    },
+    "stringDictEntry": {
+      "type": "object",
+      "description": "String dictionary entry - emitted before entries that use new string references. Maps integer IDs to their string values.",
+      "properties": {
+        "type": {
+          "const": "stringDict",
+          "description": "Entry type discriminator"
+        },
+        "strings": {
+          "type": "object",
+          "description": "Map of string ID (as string key) to string value",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["type", "strings"],
+      "additionalProperties": false
+    },
     "initEntry": {
       "type": "object",
       "description": "Captures the result of init() - initial model and bootstrap effects.",
@@ -150,6 +193,11 @@
       },
       "required": ["_functionId"],
       "additionalProperties": false
+    },
+    "stringReference": {
+      "type": "string",
+      "description": "A reference to a string in the dictionary. Format is '@' followed by an integer ID.",
+      "pattern": "^@[0-9]+$"
     }
   }
 }

@@ -55,20 +55,35 @@ fun <
                 when (val status = programRunner.runnerConfig.loggerStatus()) {
                     is LoggerStatus.Disabled -> {}
                     is LoggerStatus.Enabled -> {
-                        val logging = status.config
+                        val session = status.session
+                        val logging = session.config
                         val timestamp = logging.getTimestamp()
-                        val messageJson =
-                            TeaSerializer.serializeMessage(message as Any).toJsonString()
-                        val modelJson =
-                            TeaSerializer.serialize(updatedProgramModel).toJsonString()
-                        val effectsJson =
-                            newEffects.joinToString(",") {
-                                TeaSerializer.serialize(it).toJsonString()
-                            }
-                        val json =
-                            """{"type":"update","timestamp":$timestamp,""" +
-                                """"message":$messageJson,"model":$modelJson,"effects":[$effectsJson]}"""
-                        logging.log(json)
+
+                        val messageValue = TeaSerializer.serializeMessage(message as Any)
+                        val modelValue = TeaSerializer.serialize(updatedProgramModel)
+                        val effectValues = newEffects.map { TeaSerializer.serialize(it) }
+
+                        if (logging.compressionEnabled) {
+                            val messageJson = messageValue.toCompressedJsonString(session.dictionary)
+                            val modelJson = modelValue.toCompressedJsonString(session.dictionary)
+                            val effectsJson =
+                                effectValues.joinToString(",") {
+                                    it.toCompressedJsonString(session.dictionary)
+                                }
+                            session.emitPendingDictionaryDefinitions()
+                            val json =
+                                """{"type":"update","timestamp":$timestamp,""" +
+                                    """"message":$messageJson,"model":$modelJson,"effects":[$effectsJson]}"""
+                            logging.log(json)
+                        } else {
+                            val messageJson = messageValue.toJsonString()
+                            val modelJson = modelValue.toJsonString()
+                            val effectsJson = effectValues.joinToString(",") { it.toJsonString() }
+                            val json =
+                                """{"type":"update","timestamp":$timestamp,""" +
+                                    """"message":$messageJson,"model":$modelJson,"effects":[$effectsJson]}"""
+                            logging.log(json)
+                        }
                     }
                 }
 
@@ -134,20 +149,35 @@ fun <
         when (val status = programRunner.runnerConfig.loggerStatus()) {
             is LoggerStatus.Disabled -> {}
             is LoggerStatus.Enabled -> {
-                val logging = status.config
+                val session = status.session
+                val logging = session.config
                 val timestamp = logging.getTimestamp()
-                val startedJson =
-                    newSubscriptions.joinToString(",") {
-                        TeaSerializer.serialize(it).toJsonString()
-                    }
-                val stoppedJson =
-                    removedSubscriptions.keys.joinToString(",") {
-                        TeaSerializer.serialize(it).toJsonString()
-                    }
-                val json =
-                    """{"type":"subscriptionChange","timestamp":$timestamp,""" +
-                        """"started":[$startedJson],"stopped":[$stoppedJson]}"""
-                logging.log(json)
+
+                val startedValues = newSubscriptions.map { TeaSerializer.serialize(it) }
+                val stoppedValues = removedSubscriptions.keys.map { TeaSerializer.serialize(it) }
+
+                if (logging.compressionEnabled) {
+                    val startedJson =
+                        startedValues.joinToString(",") {
+                            it.toCompressedJsonString(session.dictionary)
+                        }
+                    val stoppedJson =
+                        stoppedValues.joinToString(",") {
+                            it.toCompressedJsonString(session.dictionary)
+                        }
+                    session.emitPendingDictionaryDefinitions()
+                    val json =
+                        """{"type":"subscriptionChange","timestamp":$timestamp,""" +
+                            """"started":[$startedJson],"stopped":[$stoppedJson]}"""
+                    logging.log(json)
+                } else {
+                    val startedJson = startedValues.joinToString(",") { it.toJsonString() }
+                    val stoppedJson = stoppedValues.joinToString(",") { it.toJsonString() }
+                    val json =
+                        """{"type":"subscriptionChange","timestamp":$timestamp,""" +
+                            """"started":[$startedJson],"stopped":[$stoppedJson]}"""
+                    logging.log(json)
+                }
             }
         }
 

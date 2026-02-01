@@ -37,14 +37,32 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
     when (val status = runnerConfig.loggerStatus()) {
         is LoggerStatus.Disabled -> {}
         is LoggerStatus.Enabled -> {
-            val logging = status.config
+            val session = status.session
+            val logging = session.config
             val timestamp = logging.getTimestamp()
-            val modelJson = TeaSerializer.serialize(initialProgramModel).toJsonString()
-            val effectsJson =
-                initialEffects.joinToString(",") { TeaSerializer.serialize(it).toJsonString() }
-            val json =
-                """{"type":"init","timestamp":$timestamp,"model":$modelJson,"effects":[$effectsJson]}"""
-            logging.log(json)
+
+            session.writeHeaderIfNeeded()
+
+            val modelValue = TeaSerializer.serialize(initialProgramModel)
+            val effectValues = initialEffects.map { TeaSerializer.serialize(it) }
+
+            if (logging.compressionEnabled) {
+                val modelJson = modelValue.toCompressedJsonString(session.dictionary)
+                val effectsJson =
+                    effectValues.joinToString(",") {
+                        it.toCompressedJsonString(session.dictionary)
+                    }
+                session.emitPendingDictionaryDefinitions()
+                val json =
+                    """{"type":"init","timestamp":$timestamp,"model":$modelJson,"effects":[$effectsJson]}"""
+                logging.log(json)
+            } else {
+                val modelJson = modelValue.toJsonString()
+                val effectsJson = effectValues.joinToString(",") { it.toJsonString() }
+                val json =
+                    """{"type":"init","timestamp":$timestamp,"model":$modelJson,"effects":[$effectsJson]}"""
+                logging.log(json)
+            }
         }
     }
 
