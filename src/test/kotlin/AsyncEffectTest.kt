@@ -7,6 +7,7 @@ import teaforge.EffectResult
 import teaforge.LoggerStatus
 import teaforge.ProgramConfig
 import teaforge.ProgramRunnerConfig
+import teaforge.SubscriptionIdentifier
 import teaforge.platform.initRunner
 import teaforge.platform.stepProgram
 import teaforge.utils.Maybe
@@ -104,6 +105,7 @@ class AsyncEffectTest {
                 }
             },
             processSubscription = { model, state -> Triple(model, state, Maybe.None) },
+            getUniqueIdentifierForSubscription = { SubscriptionIdentifier(it.toString()) },
             startSubscription = { model, _ -> Pair(model, SubState()) },
             stopSubscription = { model, _ -> model },
             startOfUpdateCycle = { model -> model },

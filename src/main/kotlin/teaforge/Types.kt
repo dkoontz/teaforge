@@ -4,6 +4,9 @@ import kotlinx.coroutines.Deferred
 import teaforge.debugger.StringDictionary
 import teaforge.utils.Maybe
 
+@JvmInline
+value class SubscriptionIdentifier(val value: String)
+
 // The completion function receives current model, returns updated model + optional message
 typealias EffectCompletion<TRunnerModel, TMessage> =
     (TRunnerModel) -> Pair<TRunnerModel, Maybe<TMessage>>
@@ -130,6 +133,7 @@ data class ProgramRunnerConfig<
     val startOfUpdateCycle: (TRunnerModel) -> TRunnerModel,
     val endOfUpdateCycle: (TRunnerModel) -> TRunnerModel,
     val processHistoryEntry: (TRunnerModel, HistoryEntry<TMessage, TProgramModel>) -> TRunnerModel,
+    val getUniqueIdentifierForSubscription: (TSubscription) -> SubscriptionIdentifier,
     val loggerStatus: () -> LoggerStatus,
 )
 
@@ -152,7 +156,7 @@ data class ProgramRunnerInstance<
     val programConfig: ProgramConfig<TEffect, TMessage, TProgramModel, TSubscription>,
     val pendingMessages: List<TMessage>,
     val pendingEffects: List<TEffect>,
-    val subscriptions: Map<TSubscription, TSubscriptionState>,
+    val subscriptions: Map<SubscriptionIdentifier, Pair<TSubscription, TSubscriptionState>>,
     val runnerModel: TRunnerModel,
     val programModel: TProgramModel,
     val inFlightEffects: List<InFlightEffect<TEffect, TRunnerModel, TMessage>>,
