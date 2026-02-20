@@ -1,6 +1,7 @@
 package teaforge
 
 import kotlinx.coroutines.Deferred
+import teaforge.debugger.StringDictionary
 import teaforge.utils.Maybe
 
 // The completion function receives current model, returns updated model + optional message
@@ -33,6 +34,82 @@ data class ProgramConfig<TEffect, TMessage, TModel, TSubscription>(
     val subscriptions: (TModel) -> List<TSubscription>,
 )
 
+data class DebugLoggingConfig(
+    val getTimestamp: () -> Long,
+    val log: (json: String) -> Unit,
+    val compressionEnabled: Boolean = false,
+)
+
+/**
+ * Manages mutable state for a debug logging session.
+ * Holds the string dictionary and tracks whether the header has been written.
+ */
+class LoggingSession(val config: DebugLoggingConfig) {
+    val dictionary: StringDictionary = StringDictionary()
+    var headerWritten: Boolean = false
+        private set
+
+    fun markHeaderWritten() {
+        headerWritten = true
+    }
+
+    /**
+     * Write the header entry if compression is enabled and header hasn't been written yet.
+     */
+    fun writeHeaderIfNeeded() {
+        if (config.compressionEnabled && !headerWritten) {
+            config.log("""{"type":"header","version":1,"compression":"stringDict"}""")
+            markHeaderWritten()
+        }
+    }
+
+    /**
+     * Emit a stringDict entry if there are pending dictionary definitions.
+     */
+    fun emitPendingDictionaryDefinitions() {
+        if (!config.compressionEnabled) return
+        val pending = dictionary.flushPendingDefinitions() ?: return
+        val entriesJson =
+            pending.entries.joinToString(",") { (id, value) ->
+                "\"$id\":\"${escapeJsonString(value)}\""
+            }
+        config.log("""{"type":"stringDict","strings":{$entriesJson}}""")
+    }
+
+    private fun escapeJsonString(s: String): String =
+        buildString {
+            for (c in s) {
+                when (c) {
+                    '"' -> append("\\\"")
+                    '\\' -> append("\\\\")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    '\b' -> append("\\b")
+                    '\u000C' -> append("\\f")
+                    else ->
+                        if (c.code < 32) {
+                            append("\\u${c.code.toString(16).padStart(4, '0')}")
+                        } else {
+                            append(c)
+                        }
+                }
+            }
+        }
+}
+
+sealed interface LoggerStatus {
+    data object Disabled : LoggerStatus
+
+    data class Enabled(
+        val session: LoggingSession,
+    ) : LoggerStatus {
+        constructor(config: DebugLoggingConfig) : this(LoggingSession(config))
+
+        val config: DebugLoggingConfig get() = session.config
+    }
+}
+
 data class ProgramRunnerConfig<
     TEffect,
     TMessage,
@@ -53,6 +130,7 @@ data class ProgramRunnerConfig<
     val startOfUpdateCycle: (TRunnerModel) -> TRunnerModel,
     val endOfUpdateCycle: (TRunnerModel) -> TRunnerModel,
     val processHistoryEntry: (TRunnerModel, HistoryEntry<TMessage, TProgramModel>) -> TRunnerModel,
+    val loggerStatus: () -> LoggerStatus,
 )
 
 data class ProgramRunnerInstance<

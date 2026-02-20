@@ -4,6 +4,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import teaforge.EffectResult
+import teaforge.LoggerStatus
 import teaforge.ProgramConfig
 import teaforge.ProgramRunnerConfig
 import teaforge.platform.initRunner
@@ -108,6 +109,7 @@ class AsyncEffectTest {
             startOfUpdateCycle = { model -> model },
             endOfUpdateCycle = { model -> model },
             processHistoryEntry = { model, _ -> model },
+            loggerStatus = { LoggerStatus.Disabled },
         )
 
     @Test

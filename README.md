@@ -267,6 +267,91 @@ enum class IoPortStatus {
 2. **Error Handling**: Implement robust error handling for hardware interactions. Any errors should be communicated back to a program via a message.
 
 
+## Debug Logging
+
+TeaForge includes a debug logging system that records program state changes in JSONL format for use with external debuggers. This enables time-travel debugging and state inspection tools.
+
+### Enabling Debug Logging
+
+Configure your `ProgramRunnerConfig` to return `LoggerStatus.Enabled`:
+
+```kotlin
+val runnerConfig = ProgramRunnerConfig(
+    // ... other config ...
+    loggerStatus = {
+        LoggerStatus.Enabled(
+            DebugLoggingConfig(
+                getTimestamp = { System.currentTimeMillis() },
+                log = { json -> logFile.appendText(json + "\n") },
+                compressionEnabled = true,
+            )
+        )
+    }
+)
+```
+
+To disable logging, return `LoggerStatus.Disabled`.
+
+### Log Format
+
+The debug log is a JSONL file (one JSON object per line). When compression is disabled, it contains three entry types:
+
+**init** - Logged when the program initializes:
+```json
+{"type":"init","timestamp":1234567890,"model":{...},"effects":[...]}
+```
+
+**update** - Logged for each message processed:
+```json
+{"type":"update","timestamp":1234567890,"message":{...},"model":{...},"effects":[...]}
+```
+
+**subscriptionChange** - Logged when subscriptions are added or removed:
+```json
+{"type":"subscriptionChange","timestamp":1234567890,"started":[...],"stopped":[...]}
+```
+
+### LZ78-Style Compression
+
+When `compressionEnabled = true`, the log uses dictionary-based compression to reduce file sizes. Repeated strings (type names, property keys, string values) are replaced with compact references like `@0`, `@5`.
+
+**Compressed log structure:**
+
+```json
+{"type":"header","version":1,"compression":"stringDict"}
+{"type":"stringDict","strings":{"0":"_type","1":"Model","2":"swerve","3":"SwerveSubsystem.Model"}}
+{"type":"init","timestamp":1234567890,"model":{"@0":"@1","@2":{"@0":"@3"}}}
+{"type":"stringDict","strings":{"4":"Message"}}
+{"type":"update","timestamp":1234567891,"message":{"@0":"@4"},"model":{"@0":"@1","@2":{"@0":"@3"}}}
+```
+
+The compression provides significant file size reduction for logs with repetitive type names and property keys. Dictionary entries (`stringDict`) are emitted before the log entries that first use them.
+
+**What gets compressed:**
+- `_type` values (e.g., `"SwerveSubsystem.Model"` → `"@3"`)
+- Property names/keys (e.g., `"leftJoystick"` → `"@5"`)
+- String values (repeated string constants)
+
+**What stays uncompressed:**
+- Top-level entry fields (`type`, `timestamp`, `model`, etc.)
+- Numeric values
+- Boolean values
+
+### Serialization
+
+The `TeaSerializer` uses Kotlin reflection to serialize program types:
+
+- Data classes include all properties
+- Sealed interface variants include a `_type` field with the qualified type name
+- Wrapper messages (e.g., `Message.Subsystem(innerMessage)`) include an `_inner` field
+- Functions are serialized as references with `_functionId` and `_signature` fields
+- Enums are serialized with their qualified name
+
+### Schema
+
+A JSON Schema for the log format is available at `docs/tea-debug-log-schema.json`.
+
+
 ## Using TeaForge as a Dependency
 
 ### Maven
@@ -277,7 +362,7 @@ To use TeaForge in your Maven project, add the following to your `pom.xml`:
 <dependency>
     <groupId>io.github.teaforge</groupId>
     <artifactId>teaforge</artifactId>
-    <version>0.1.5</version>
+    <version>0.1.6</version>
 </dependency>
 ```
 
@@ -286,13 +371,13 @@ To use TeaForge in your Maven project, add the following to your `pom.xml`:
 To use TeaForge in your Gradle project, add the following to your `build.gradle` file
 
 ```groovy
-implementation 'io.github.teaforge:teaforge:0.1.5'
+implementation 'io.github.teaforge:teaforge:0.1.6'
 ```
 
 or `build.gradle.kts` file
 
 ```kotlin
-implementation("io.github.teaforge:teaforge:0.1.5")
+implementation("io.github.teaforge:teaforge:0.1.6")
 ```
 
 ## Building

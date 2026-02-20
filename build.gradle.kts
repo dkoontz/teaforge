@@ -7,13 +7,14 @@ plugins {
 
 project.group = "io.github.dkoontz"
 
-project.version = "0.1.5"
+project.version = "0.1.6"
 
 repositories { mavenCentral() }
 
 dependencies {
     implementation(kotlin("stdlib"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation(kotlin("reflect"))
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 }
@@ -55,7 +56,7 @@ githubRelease {
     token(System.getenv("GITHUB_TOKEN") ?: "")
     owner.set("dkoontz")
     repo.set(project.name)
-    tagName.set("${project.version}")
+    tagName.set("v${project.version}")
     releaseName.set("Release ${project.version}")
     targetCommitish.set("main")
     body.set("Automated release for version ${project.version}")
