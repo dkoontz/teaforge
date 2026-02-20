@@ -9,6 +9,7 @@ import teaforge.InFlightEffect
 import teaforge.LoggerStatus
 import teaforge.ProgramConfig
 import teaforge.ProgramRunnerInstance
+import teaforge.SubscriptionIdentifier
 import teaforge.debugger.TeaSerializer
 import teaforge.utils.Maybe
 
@@ -135,16 +136,20 @@ fun <
     TSubscriptionState,
     > {
     val previousSubscriptions = programRunner.subscriptions
-    val previousSubscriptionKeys = previousSubscriptions.keys
+    val previousKeys = previousSubscriptions.keys
 
-    val currentSubscriptions =
+    val getId = programRunner.runnerConfig.getUniqueIdentifierForSubscription
+    val currentSubscriptionList =
         programRunner.programConfig.subscriptions(programRunner.programModel)
+    val currentById = currentSubscriptionList.associateBy { getId(it) }
+    val currentKeys = currentById.keys
 
-    if (currentSubscriptions != previousSubscriptionKeys) {
-        val newSubscriptions = currentSubscriptions - previousSubscriptionKeys
+    if (currentKeys != previousKeys) {
+        val addedKeys = currentKeys - previousKeys
+        val removedKeys = previousKeys - currentKeys
 
-        val removedSubscriptions =
-            previousSubscriptions.filterKeys { it !in currentSubscriptions }
+        val newSubscriptions = addedKeys.map { currentById.getValue(it) }
+        val removedSubscriptions = removedKeys.map { previousSubscriptions.getValue(it) }
 
         when (val status = programRunner.runnerConfig.loggerStatus()) {
             is LoggerStatus.Disabled -> {}
@@ -154,7 +159,8 @@ fun <
                 val timestamp = logging.getTimestamp()
 
                 val startedValues = newSubscriptions.map { TeaSerializer.serialize(it) }
-                val stoppedValues = removedSubscriptions.keys.map { TeaSerializer.serialize(it) }
+                val stoppedValues =
+                    removedSubscriptions.map { (sub, _) -> TeaSerializer.serialize(sub) }
 
                 if (logging.compressionEnabled) {
                     val startedJson =
@@ -182,12 +188,12 @@ fun <
         }
 
         val remainingSubscriptions =
-            previousSubscriptions.filterKeys { it in currentSubscriptions }
+            previousSubscriptions.filterKeys { it in currentKeys }
 
         val runnerModelAfterProcessingSubscriptionRemovals =
-            removedSubscriptions.values.fold(
+            removedSubscriptions.fold(
                 initial = programRunner.runnerModel,
-                operation = { runnerModel, subscriptionState ->
+                operation = { runnerModel, (_, subscriptionState) ->
                     programRunner.runnerConfig.stopSubscription(
                         runnerModel,
                         subscriptionState,
@@ -212,8 +218,8 @@ fun <
                         updatedRunner,
                         subscriptions +
                             (
-                                newSubscription to
-                                    initialSubscriptionState
+                                getId(newSubscription) to
+                                    Pair(newSubscription, initialSubscriptionState)
                             ),
                     )
                 },
@@ -258,15 +264,16 @@ fun <
                 initial =
                     Triple<
                         TRunnerModel,
-                        Map<TSubscription, TSubscriptionState>,
+                        Map<SubscriptionIdentifier, Pair<TSubscription, TSubscriptionState>>,
                         List<TMessage>,
                         >(
                         programRunner.runnerModel,
                         programRunner.subscriptions,
                         emptyList(),
                     ),
-                operation = { acc, (subscription, subscriptionState) ->
+                operation = { acc, (key, subscriptionPair) ->
                     val (model, subscriptions, messages) = acc
+                    val (subscription, subscriptionState) = subscriptionPair
 
                     val (updatedModel, updatedSubscriptionState, newMessage) =
                         programRunner.runnerConfig.processSubscription(
@@ -276,7 +283,7 @@ fun <
 
                     val updatedSubscriptions =
                         subscriptions +
-                            (subscription to updatedSubscriptionState)
+                            (key to Pair(subscription, updatedSubscriptionState))
 
                     when (newMessage) {
                         is Maybe.None ->
