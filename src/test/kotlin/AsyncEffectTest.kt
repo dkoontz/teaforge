@@ -110,7 +110,6 @@ class AsyncEffectTest {
             stopSubscription = { model, _ -> model },
             startOfUpdateCycle = { model -> model },
             endOfUpdateCycle = { model -> model },
-            processHistoryEntry = { model, _ -> model },
             loggerStatus = { LoggerStatus.Disabled },
         )
 

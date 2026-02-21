@@ -132,7 +132,6 @@ data class ProgramRunnerConfig<
     val stopSubscription: (TRunnerModel, TSubscriptionState) -> TRunnerModel,
     val startOfUpdateCycle: (TRunnerModel) -> TRunnerModel,
     val endOfUpdateCycle: (TRunnerModel) -> TRunnerModel,
-    val processHistoryEntry: (TRunnerModel, HistoryEntry<TMessage, TProgramModel>) -> TRunnerModel,
     val getUniqueIdentifierForSubscription: (TSubscription) -> SubscriptionIdentifier,
     val loggerStatus: () -> LoggerStatus,
 )
@@ -160,16 +159,4 @@ data class ProgramRunnerInstance<
     val runnerModel: TRunnerModel,
     val programModel: TProgramModel,
     val inFlightEffects: List<InFlightEffect<TEffect, TRunnerModel, TMessage>>,
-)
-
-sealed interface HistoryEventSource<TMessage> {
-    object ProgramInit : HistoryEventSource<Nothing>
-    data class ProgramMessage<TMessage>(
-        val message: TMessage,
-    ) : HistoryEventSource<TMessage>
-}
-
-data class HistoryEntry<TMessage, TProgramModel>(
-    val source: HistoryEventSource<TMessage>,
-    val programModelAfterEvent: TProgramModel,
 )

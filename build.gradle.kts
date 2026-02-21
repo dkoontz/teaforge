@@ -7,7 +7,7 @@ plugins {
 
 project.group = "io.github.dkoontz"
 
-project.version = "0.1.7"
+project.version = "0.1.8"
 
 repositories { mavenCentral() }
 
