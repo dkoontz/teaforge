@@ -89,10 +89,7 @@ sealed interface Subscription<out TMessage> {
 Your platform model contains platform-specific state:
 
 ```kotlin
-data class PlatformModel<TMessage, TModel>(
-    // Track message history if needed
-    val messageHistory: List<HistoryEntry<TMessage, TModel>>,
-
+data class PlatformModel(
     // Platform-specific resources
     val hardware: PlatformHardware,
 )

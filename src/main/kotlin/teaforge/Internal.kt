@@ -3,8 +3,6 @@ package teaforge.internal
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import teaforge.EffectResult
-import teaforge.HistoryEntry
-import teaforge.HistoryEventSource
 import teaforge.InFlightEffect
 import teaforge.LoggerStatus
 import teaforge.ProgramConfig
@@ -88,18 +86,7 @@ fun <
                     }
                 }
 
-                val historyEntry =
-                    HistoryEntry(
-                        source = HistoryEventSource.ProgramMessage(message),
-                        programModelAfterEvent = updatedProgramModel,
-                    )
-                val updatedRunnerModel =
-                    programRunner.runnerConfig.processHistoryEntry(
-                        runnerModel,
-                        historyEntry,
-                    )
-
-                Triple(updatedRunnerModel, updatedProgramModel, currentEffects + newEffects)
+                Triple(runnerModel, updatedProgramModel, currentEffects + newEffects)
             },
         )
 
