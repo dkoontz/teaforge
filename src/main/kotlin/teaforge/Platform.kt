@@ -5,7 +5,12 @@ import teaforge.LoggerStatus
 import teaforge.ProgramConfig
 import teaforge.ProgramRunnerConfig
 import teaforge.ProgramRunnerInstance
+import teaforge.debugger.JsonDiff
+import teaforge.debugger.JsonValue
 import teaforge.debugger.TeaSerializer
+import teaforge.debugger.emitPendingDictionaryDefinitions
+import teaforge.debugger.updateLastModel
+import teaforge.debugger.writeHeaderIfNeeded
 import teaforge.internal.activateOrDeactivateSubscriptions
 import teaforge.internal.collectCompletedEffects
 import teaforge.internal.processMessages
@@ -37,32 +42,42 @@ fun <TEffect, TMessage, TProgramModel, TRunnerModel, TSubscription, TSubscriptio
     when (val status = runnerConfig.loggerStatus()) {
         is LoggerStatus.Disabled -> {}
         is LoggerStatus.Enabled -> {
-            val session = status.session
+            val session = writeHeaderIfNeeded(status.session)
+            status.session = session
             val logging = session.config
             val timestamp = logging.getTimestamp()
 
-            session.writeHeaderIfNeeded()
-
             val modelValue = TeaSerializer.serialize(initialProgramModel)
+            val emptyModel = JsonValue.JsonObject(emptyMap())
+            val diffOps = JsonDiff.diff(emptyModel, modelValue)
             val effectValues = initialEffects.map { TeaSerializer.serialize(it) }
 
             if (logging.compressionEnabled) {
-                val modelJson = modelValue.toCompressedJsonString(session.dictionary)
+                val modelDiffJson =
+                    diffOps.joinToString(",") { op ->
+                        teaforge.debugger.EntrySerializer.serializeDiffOperation(op)
+                            .toCompressedJsonString(session.dictionary)
+                    }
                 val effectsJson =
                     effectValues.joinToString(",") {
                         it.toCompressedJsonString(session.dictionary)
                     }
-                session.emitPendingDictionaryDefinitions()
+                emitPendingDictionaryDefinitions(session)
                 val json =
-                    """{"type":"init","timestamp":$timestamp,"model":$modelJson,"effects":[$effectsJson]}"""
+                    """{"type":"init","timestamp":$timestamp,"modelDiff":[$modelDiffJson],"effects":[$effectsJson]}"""
                 logging.log(json)
             } else {
-                val modelJson = modelValue.toJsonString()
+                val modelDiffJson =
+                    diffOps.joinToString(",") { op ->
+                        teaforge.debugger.EntrySerializer.serializeDiffOperation(op).toJsonString()
+                    }
                 val effectsJson = effectValues.joinToString(",") { it.toJsonString() }
                 val json =
-                    """{"type":"init","timestamp":$timestamp,"model":$modelJson,"effects":[$effectsJson]}"""
+                    """{"type":"init","timestamp":$timestamp,"modelDiff":[$modelDiffJson],"effects":[$effectsJson]}"""
                 logging.log(json)
             }
+
+            status.session = updateLastModel(session, modelValue)
         }
     }
 

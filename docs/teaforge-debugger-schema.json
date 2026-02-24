@@ -21,8 +21,8 @@
         },
         "version": {
           "type": "integer",
-          "description": "Log format version. Version 1 uses string dictionary compression.",
-          "const": 1
+          "description": "Log format version. Version 2 uses modelDiff instead of model in init and update entries.",
+          "const": 2
         },
         "compression": {
           "type": "string",
@@ -54,7 +54,7 @@
     },
     "initEntry": {
       "type": "object",
-      "description": "Captures the result of init() - initial model and bootstrap effects.",
+      "description": "Captures the result of init() - a diff of the initial model against empty state and bootstrap effects.",
       "properties": {
         "type": {
           "const": "init",
@@ -63,9 +63,10 @@
         "timestamp": {
           "$ref": "#/$defs/timestamp"
         },
-        "model": {
-          "$ref": "#/$defs/serializedValue",
-          "description": "The initial program model after init()"
+        "modelDiff": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/diffOperation" },
+          "description": "Diff operations representing the initial model state. Since the previous model is considered empty, all operations are 'add'."
         },
         "effects": {
           "type": "array",
@@ -73,7 +74,7 @@
           "description": "Effects returned from init()"
         }
       },
-      "required": ["type", "timestamp", "model", "effects"],
+      "required": ["type", "timestamp", "modelDiff", "effects"],
       "additionalProperties": false
     },
     "updateEntry": {
@@ -91,9 +92,10 @@
           "$ref": "#/$defs/serializedMessage",
           "description": "The message that triggered the update"
         },
-        "model": {
-          "$ref": "#/$defs/serializedValue",
-          "description": "The program model after update()"
+        "modelDiff": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/diffOperation" },
+          "description": "Diff operations between the previous model and the new model after update(). Empty array when the model did not change."
         },
         "effects": {
           "type": "array",
@@ -101,7 +103,7 @@
           "description": "Effects returned from update()"
         }
       },
-      "required": ["type", "timestamp", "message", "model", "effects"],
+      "required": ["type", "timestamp", "message", "modelDiff", "effects"],
       "additionalProperties": false
     },
     "subscriptionChangeEntry": {
@@ -128,6 +130,72 @@
       },
       "required": ["type", "timestamp", "started", "stopped"],
       "additionalProperties": false
+    },
+    "diffOperation": {
+      "description": "A single diff operation describing a change between two model states. Follows a format inspired by JSON Patch (RFC 6902).",
+      "oneOf": [
+        { "$ref": "#/$defs/addOperation" },
+        { "$ref": "#/$defs/replaceOperation" },
+        { "$ref": "#/$defs/removeOperation" }
+      ]
+    },
+    "addOperation": {
+      "type": "object",
+      "description": "A field that exists in the new model but not in the old model.",
+      "properties": {
+        "op": {
+          "const": "add",
+          "description": "Operation type"
+        },
+        "path": {
+          "$ref": "#/$defs/jsonPointer"
+        },
+        "value": {
+          "$ref": "#/$defs/serializedValue",
+          "description": "The new value to add"
+        }
+      },
+      "required": ["op", "path", "value"],
+      "additionalProperties": false
+    },
+    "replaceOperation": {
+      "type": "object",
+      "description": "A field that exists in both models but has a different value.",
+      "properties": {
+        "op": {
+          "const": "replace",
+          "description": "Operation type"
+        },
+        "path": {
+          "$ref": "#/$defs/jsonPointer"
+        },
+        "value": {
+          "$ref": "#/$defs/serializedValue",
+          "description": "The new value"
+        }
+      },
+      "required": ["op", "path", "value"],
+      "additionalProperties": false
+    },
+    "removeOperation": {
+      "type": "object",
+      "description": "A field that exists in the old model but not in the new model.",
+      "properties": {
+        "op": {
+          "const": "remove",
+          "description": "Operation type"
+        },
+        "path": {
+          "$ref": "#/$defs/jsonPointer"
+        }
+      },
+      "required": ["op", "path"],
+      "additionalProperties": false
+    },
+    "jsonPointer": {
+      "type": "string",
+      "description": "A JSON Pointer string (RFC 6901). Root properties start with '/'. Special characters: '~' is escaped as '~0', '/' is escaped as '~1'.",
+      "pattern": "^(/([^/~]|~[01])*)*$"
     },
     "timestamp": {
       "type": "integer",

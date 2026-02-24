@@ -8,24 +8,24 @@ sealed interface DebuggerEntry
 
 /**
  * Init entry - captures the result of init().
- * Records initial model and bootstrap effects.
+ * Records the diff of the initial model against empty state and bootstrap effects.
  */
 data class InitEntry(
     val sequence: Long,
     val timestamp: Long,
-    val model: JsonValue,
+    val modelDiff: List<DiffOperation>,
     val effects: List<JsonValue>,
 ) : DebuggerEntry
 
 /**
  * Update entry - captures each message dispatch through update().
- * Records the message, resulting model, and effects.
+ * Records the message, the diff between the previous and new model, and effects.
  */
 data class UpdateEntry(
     val sequence: Long,
     val timestamp: Long,
     val message: JsonValue,
-    val model: JsonValue,
+    val modelDiff: List<DiffOperation>,
     val effects: List<JsonValue>,
 ) : DebuggerEntry
 

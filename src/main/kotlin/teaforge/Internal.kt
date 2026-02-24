@@ -8,7 +8,11 @@ import teaforge.LoggerStatus
 import teaforge.ProgramConfig
 import teaforge.ProgramRunnerInstance
 import teaforge.SubscriptionIdentifier
+import teaforge.debugger.JsonDiff
+import teaforge.debugger.JsonValue
 import teaforge.debugger.TeaSerializer
+import teaforge.debugger.emitPendingDictionaryDefinitions
+import teaforge.debugger.updateLastModel
 import teaforge.utils.Maybe
 
 fun <
@@ -59,30 +63,41 @@ fun <
                         val timestamp = logging.getTimestamp()
 
                         val messageValue = TeaSerializer.serializeMessage(message as Any)
-                        val modelValue = TeaSerializer.serialize(updatedProgramModel)
+                        val newModelValue = TeaSerializer.serialize(updatedProgramModel)
+                        val previousModel: JsonValue = session.lastModel
+                        val diffOps = JsonDiff.diff(previousModel, newModelValue)
                         val effectValues = newEffects.map { TeaSerializer.serialize(it) }
 
                         if (logging.compressionEnabled) {
                             val messageJson = messageValue.toCompressedJsonString(session.dictionary)
-                            val modelJson = modelValue.toCompressedJsonString(session.dictionary)
+                            val modelDiffJson =
+                                diffOps.joinToString(",") { op ->
+                                    teaforge.debugger.EntrySerializer.serializeDiffOperation(op)
+                                        .toCompressedJsonString(session.dictionary)
+                                }
                             val effectsJson =
                                 effectValues.joinToString(",") {
                                     it.toCompressedJsonString(session.dictionary)
                                 }
-                            session.emitPendingDictionaryDefinitions()
+                            emitPendingDictionaryDefinitions(session)
                             val json =
                                 """{"type":"update","timestamp":$timestamp,""" +
-                                    """"message":$messageJson,"model":$modelJson,"effects":[$effectsJson]}"""
+                                    """"message":$messageJson,"modelDiff":[$modelDiffJson],"effects":[$effectsJson]}"""
                             logging.log(json)
                         } else {
                             val messageJson = messageValue.toJsonString()
-                            val modelJson = modelValue.toJsonString()
+                            val modelDiffJson =
+                                diffOps.joinToString(",") { op ->
+                                    teaforge.debugger.EntrySerializer.serializeDiffOperation(op).toJsonString()
+                                }
                             val effectsJson = effectValues.joinToString(",") { it.toJsonString() }
                             val json =
                                 """{"type":"update","timestamp":$timestamp,""" +
-                                    """"message":$messageJson,"model":$modelJson,"effects":[$effectsJson]}"""
+                                    """"message":$messageJson,"modelDiff":[$modelDiffJson],"effects":[$effectsJson]}"""
                             logging.log(json)
                         }
+
+                        status.session = updateLastModel(session, newModelValue)
                     }
                 }
 
@@ -158,7 +173,7 @@ fun <
                         stoppedValues.joinToString(",") {
                             it.toCompressedJsonString(session.dictionary)
                         }
-                    session.emitPendingDictionaryDefinitions()
+                    emitPendingDictionaryDefinitions(session)
                     val json =
                         """{"type":"subscriptionChange","timestamp":$timestamp,""" +
                             """"started":[$startedJson],"stopped":[$stoppedJson]}"""

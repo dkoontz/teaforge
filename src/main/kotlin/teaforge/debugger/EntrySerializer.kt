@@ -28,7 +28,7 @@ object EntrySerializer {
             "entryType" to str("init"),
             "sequence" to num(entry.sequence),
             "timestamp" to num(entry.timestamp),
-            "model" to entry.model,
+            "modelDiff" to arr(entry.modelDiff.map { serializeDiffOperation(it) }),
             "effects" to arr(entry.effects),
         )
     }
@@ -42,7 +42,7 @@ object EntrySerializer {
             "sequence" to num(entry.sequence),
             "timestamp" to num(entry.timestamp),
             "message" to entry.message,
-            "model" to entry.model,
+            "modelDiff" to arr(entry.modelDiff.map { serializeDiffOperation(it) }),
             "effects" to arr(entry.effects),
         )
     }
@@ -58,6 +58,31 @@ object EntrySerializer {
             "started" to arr(entry.started),
             "stopped" to arr(entry.stopped),
         )
+    }
+
+    /**
+     * Serialize a single DiffOperation to a JsonValue object.
+     */
+    fun serializeDiffOperation(op: DiffOperation): JsonValue {
+        return when (op) {
+            is DiffOperation.Add ->
+                obj(
+                    "op" to str("add"),
+                    "path" to str(op.path),
+                    "value" to op.value,
+                )
+            is DiffOperation.Replace ->
+                obj(
+                    "op" to str("replace"),
+                    "path" to str(op.path),
+                    "value" to op.value,
+                )
+            is DiffOperation.Remove ->
+                obj(
+                    "op" to str("remove"),
+                    "path" to str(op.path),
+                )
+        }
     }
 
     /**

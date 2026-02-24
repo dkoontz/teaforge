@@ -8,6 +8,7 @@ import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Logger for TEA applications.
@@ -20,6 +21,9 @@ class Logger(
     private val sequenceCounter = AtomicLong(0)
     private var writer: BufferedWriter? = null
     private var lastSubscriptions: Set<String> = emptySet()
+
+    /** Tracks the last serialized program model for computing diffs. */
+    private val lastModel: AtomicReference<JsonValue?> = AtomicReference(null)
 
     /**
      * Start recording to the output file.
@@ -40,6 +44,7 @@ class Logger(
 
     /**
      * Record the init event.
+     * Diffs the initial model against an empty object so all fields produce add operations.
      */
     fun recordInit(
         model: Any,
@@ -47,12 +52,17 @@ class Logger(
     ) {
         ensureStarted()
 
+        val modelValue = TeaSerializer.serialize(model)
+        val emptyModel = JsonValue.JsonObject(emptyMap())
+        val diffOps = JsonDiff.diff(emptyModel, modelValue)
+        lastModel.set(modelValue)
+
         val initJson =
             obj(
                 "entryType" to str("init"),
                 "sequence" to num(sequenceCounter.getAndIncrement()),
                 "timestamp" to num(System.currentTimeMillis()),
-                "model" to TeaSerializer.serialize(model),
+                "modelDiff" to arr(diffOps.map { EntrySerializer.serializeDiffOperation(it) }),
                 "effects" to arr(effects.map { TeaSerializer.serialize(it) }),
             )
 
@@ -61,6 +71,7 @@ class Logger(
 
     /**
      * Record an update event.
+     * Diffs the new model against the previously recorded model.
      */
     fun recordUpdate(
         message: Any,
@@ -69,13 +80,18 @@ class Logger(
     ) {
         ensureStarted()
 
+        val newModelValue = TeaSerializer.serialize(model)
+        val previousModel: JsonValue = lastModel.get() ?: JsonValue.JsonObject(emptyMap())
+        val diffOps = JsonDiff.diff(previousModel, newModelValue)
+        lastModel.set(newModelValue)
+
         val updateJson =
             obj(
                 "entryType" to str("update"),
                 "sequence" to num(sequenceCounter.getAndIncrement()),
                 "timestamp" to num(System.currentTimeMillis()),
                 "message" to TeaSerializer.serializeMessage(message),
-                "model" to TeaSerializer.serialize(model),
+                "modelDiff" to arr(diffOps.map { EntrySerializer.serializeDiffOperation(it) }),
                 "effects" to arr(effects.map { TeaSerializer.serialize(it) }),
             )
 
